@@ -137,8 +137,8 @@ void Client::phase_0(){
     sprintf(buffer, "\r\n");
     send(sock, buffer, strlen(buffer), 0);
 
-    // 发送的数据HTTP header，GET
-    add_event(epoll_fd, sock, EPOLLIN);
+    /* edge-triggered */
+    add_event(epoll_fd, sock, EPOLLIN | EPOLLET);
 
     /* write response to file */
     FILE *outfile = fopen("phase_0.log", "w+");
@@ -150,17 +150,18 @@ void Client::phase_0(){
         printf("close fprintf buffer failed!\n");
     }
 
+    int res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
+    if(res < 0){
+        printf("epoll_wait failed\n");
+    }
     while(1){
-        int res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
-        if(res<0){
-            printf("epoll_wait failed\n");
-        }else if(res == 0 && errno == EAGAIN){
+        res = recv(sock, buffer, sizeof(buffer), 0);
+        if(res == -1 && errno == EAGAIN){
             printf("close socket\n");
             remove_event(epoll_fd, sock);
             close(sock);
             break;
         }
-        res = recv(sock, buffer, sizeof(buffer), 0);
         for (int i = 0; i < res;i++){
             fputc(buffer[i], outfile);
         }
