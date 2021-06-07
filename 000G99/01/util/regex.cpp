@@ -4,6 +4,7 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <map>
 using namespace std;
 
 /**
@@ -79,7 +80,16 @@ void search_2(string temp){
  *                                                                                 ~         ~~~~~~~~~~~~~
  * output: for循环，循环内部，打印"提交次数" "文件序号" "文件名"
  */ 
-void search_3(string temp){
+
+struct Homework{
+    int submitNum;
+    string homeworkName;
+};
+
+map<int, Homework> search_3(string temp){
+
+    map<int, Homework> resmap;
+
     regex pattern("\"date\\d+\"[\\s\\w]*>第(\\d+)次[^(]*onChange\\((\\d+)[\\d,\\s]*'([^<>/\\|:\"\\*\?]+\\.\\w+)'");
     smatch result;
     string::const_iterator iter_begin = temp.cbegin();
@@ -97,6 +107,11 @@ void search_3(string temp){
 
         std::string res3 = result[3];
         cout << "文件名称:" << res3 << endl;
+
+        int subnum = atoi(res.c_str());
+        int workno = atoi(res2.c_str());
+        Homework homework={subnum, res3};
+        resmap.insert({workno, homework});
 
         iter_begin = result[0].second;
     }
@@ -120,13 +135,18 @@ void search_3(string temp){
         std::string res3 = result2[3];
         cout << "文件名称:" << res3 << endl;
 
+        int workno = atoi(res2.c_str());
+        Homework homework = {0, res3};
+        resmap.insert({workno, homework});
+
         iter_begin2 = result2[0].second;
     }
 
-    return ;
+    return resmap;
 }
 
 int main(){
+    map<int, Homework> resmap;
     fstream file;
     string temp;
     file.open("tmp", ios::in);
@@ -136,7 +156,14 @@ int main(){
     //printf("%s\n", temp.c_str());
     search_1(temp);
     search_2(temp);
-    search_3(temp);
+    resmap = search_3(temp);
 
+    map<int, Homework>::iterator iter;
+    iter = resmap.begin();
+    while(iter!=resmap.end())
+    {
+        cout<<iter->first<<" "<<iter->second.submitNum<<" "<<iter->second.homeworkName<<endl;
+        iter++;
+    }
     return 0;
 }
