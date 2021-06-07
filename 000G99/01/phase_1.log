@@ -1,5 +1,5 @@
 HTTP/1.1 200 OK
-Date: Mon, 07 Jun 2021 04:31:35 GMT
+Date: Mon, 07 Jun 2021 07:37:49 GMT
 Server: Apache/2.4.37 (centos) OpenSSL/1.1.1g mod_fcgid/2.3.9
 X-Powered-By: PHP/7.2.24
 Expires: Thu, 19 Nov 1981 08:52:00 GMT
@@ -7,7 +7,7 @@ Cache-Control: no-store, no-cache, must-revalidate
 Pragma: no-cache
 Refresh: 0;url=./lib/smain.php
 HTTP/1.1 200 OK
-Date: Mon, 07 Jun 2021 04:31:35 GMT
+Date: Mon, 07 Jun 2021 07:37:49 GMT
 Server: Apache/2.4.37 (centos) OpenSSL/1.1.1g mod_fcgid/2.3.9
 X-Powered-By: PHP/7.2.24
 Expires: Thu, 19 Nov 1981 08:52:00 GMT
@@ -26,11 +26,11 @@ Content-Type: text/html; charset=GB18030
 
 <div style="width:100% auto; border:1px">
     <div id="top" style="width:100%; height:50px;">
-	<table align="left" width="100%" border="2" cellpadding="0" cellspacing="0"><caption align="center">开课年级:2018&nbsp&nbsp&nbsp学期:2020/2021/2&nbsp&nbsp&nbsp课号:10106202&nbsp&nbsp&nbsp学号:1853764&nbsp&nbsp&nbsp姓名:赵旭豪&nbsp&nbsp&nbsp性别:男&nbsp&nbsp&nbsp班级:计算机科学与技术(四)/计科&nbsp&nbsp&nbspIP:192.168.1.246&nbsp&nbsp&nbsp登录:2021-06-07 12:31:35</caption></table>    </div>
+	<table align="left" width="100%" border="2" cellpadding="0" cellspacing="0"><caption align="center">开课年级:2018&nbsp&nbsp&nbsp学期:2020/2021/2&nbsp&nbsp&nbsp课号:10106202&nbsp&nbsp&nbsp学号:1853764&nbsp&nbsp&nbsp姓名:赵旭豪&nbsp&nbsp&nbsp性别:男&nbsp&nbsp&nbsp班级:计算机科学与技术(四)/计科&nbsp&nbsp&nbspIP:192.168.1.246&nbsp&nbsp&nbsp登录:2021-06-07 15:37:49</caption></table>    </div>
 
     <div id="middle" style="height:500px; width:100%">
 	<div id="left" style="width:15%; height:500px; float:left;">
-	<table align="left" width="85%" border="0" cellpadding="0" cellspacing="0"><left><ul id="leftmenu"><br><br>作业提交<li><a href="./smain.php?action=第0章">第0章/5/6</a></li><li><a href="./smain.php?action=cscore">当前成绩</a></li><br><br>其它：<li><a href="./smain.php?action=sloginfo">提交日志</a></li><li><a href="./smain.php?action=loginfo">登录日志</a></li><li><a href="./smain.php?action=changepwd">修改密码</a></li><li><a href=../logout.php>退出</a></li></ul></left></table>	</div>
+	<table align="left" width="85%" border="0" cellpadding="0" cellspacing="0"><left><ul id="leftmenu"><br><br>作业提交<li><a href="./smain.php?action=第0章">第0章/0/6</a></li><li><a href="./smain.php?action=cscore">当前成绩</a></li><br><br>其它：<li><a href="./smain.php?action=sloginfo">提交日志</a></li><li><a href="./smain.php?action=loginfo">登录日志</a></li><li><a href="./smain.php?action=changepwd">修改密码</a></li><li><a href=../logout.php>退出</a></li></ul></left></table>	</div>
 
 	<div id="main" style="width:50%; height:500px; float:left"><br><br><center><h2>请选择左侧的章节</h2></center><br></div>    </div>
 </div>
@@ -61,12 +61,12 @@ Content-Type: text/html; charset=GB18030
 			<!显示验证字符串>
 		        <tr>
 		        <td  style="font-family:Verdana, Arial, Helvetica, sans-serif;">验&nbsp&nbsp&nbsp证：</td>
-			<td><input type="text" style="width: 72px;text-align:right;" size="18" value="10*7=" disabled>
+			<td><input type="text" style="width: 72px;text-align:right;" size="18" value="73+21=" disabled>
 			<input type="text" name="input_ans" style="width: 40px;text-align:left;" value="" maxlength="6" >
 			<!一个隐藏按钮，用于记录验证公式的内容>
-			<input type="hidden" name="auth_ask" value=10*7= >
+			<input type="hidden" name="auth_ask" value=73+21= >
 			<!一个隐藏按钮，用于记录验证公式的值>
-			<input type="hidden" name="auth_answer" value=70 >
+			<input type="hidden" name="auth_answer" value=94 >
 			<!一个隐藏按钮，用于与onConfirmLogout交互>
 			<!input type="hidden" id="confirm_logout" name="confirm_logout" value="123">
 			</td>

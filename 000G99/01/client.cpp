@@ -213,6 +213,7 @@ void Client::phase_1(){
     // res需要解析是否存在refresh字段，从而判断是否登录成功
     
     char http_body[200];
+    // TODO password中的特殊字符需要进行替换
     sprintf(http_body, "username=%d&password=%s\x25\x32\x31&input_ans=%s&auth_ask=%s%%3D&auth_answer=%s&login=%%B5%%C7%%C2%%BC\r\n", user, passwd, auth_answer.c_str(), auth_ask.c_str(), auth_answer.c_str());
 
     sprintf(buffer, "POST / HTTP/1.1\r\nHost: %s:%d\r\n", ip, port);
@@ -387,23 +388,139 @@ void Client::phase_2(){
         }
     }
 
-    int file_cnt = 0;                        /* 文件列表的文件数量 */
+    int file_num = 0;                        /* 文件列表的文件数量 */
     int file_uploaded = 0;                   /* 已提交文件数量 */
     int file_reach_max = 0;                  /* 已经达到上限的文件数量 */
     int max_upload = 3;                      /* 最大允许上传次数 */
-    std::vector<int> res_upload(file_cnt, 3);/* 每个文件的剩余上传次数 */
+    std::vector<int> res_upload(file_num, 3);/* 每个文件的剩余上传次数 */
+    std::vector<std::string> file_name(file_num);
 
-// 第0章目前已布置的作业共[6]题，已提交[5]题，其中[0]题已达最大提交次数 -> file_cnt
-// <td>0</td><td>${test4.cpp}</td>  -> 文件名
-// disabled>第${2}次&nbsp -> 剩余次数 max_upload - (${次数} - 1) =maxupload-当前次数+1
+    /* print file list */
+    printf("文件序号\t文件名称\t剩余上传次数\n");
+    for (int i = 1; i <= file_num; i++) {
+        printf("%d\t%s\t%d\n", i, file_name[i - 1].c_str(), res_upload[i - 1]);
+    }
+    printf("一共%d个文件，已提交%d个文件，%d个文件已经达到上传最大次数\n", file_num, file_uploaded, file_reach_max);
 
-    std::smatch result;
-    std::regex pattern("目前已布置的作业共[(\\d{*})]题，已提交[\\d{*}]题，其中[(\\d{*})]题已达最大提交次数");
-    std::regex_match(temp, result, pattern);
-    std::cout << result[0] << std::endl;
-    std::cout << result[1] << std::endl;
-    std::cout << result[2] << std::endl;
-    std::cout << result[3] << std::endl;
+
+    // TODO
+    // 文件名不匹配 剩余上传次数为0 超过提交时间 => error message
+    // 否则进行上传
+    
+    // 1 本地文件是否存在
+    // 2 本地文件length>0
+    // 3 本地文件存在于列表中
+    // 4 对应列表文件的上传次数>0
+    // then 上传文件
+    std::ifstream infile;
+    infile.open(file, std::ios::in);
+    /* exit if no file */
+    if(!infile){
+        printf("本地文件%s不存在，结束进程\n", file);
+        exit(-1);
+    }
+    /* get file length */
+    infile.seekg(0, std::ios::end);
+    std::streampos ps = infile.tellg();
+    int file_length = static_cast<int>(ps);
+    infile.seekg(0, std::ios::beg);
+    /* exit if length == 0 */
+    printf("文件%s字节数量=%d\n", file, file_length);
+    if (file_length == 0) {
+        printf("文件%s字节数量=0，结束进程\n", file);
+        exit(-1);
+    }
+    /* exit if file_name not match */
+    bool match = false;
+    int idx = 1;
+    for (; idx <= file_num; idx++) {
+        if(file_name[idx - 1] == std::string(file)){
+            match = true;
+            break;
+        }
+    }
+    if(!match){
+        printf("文件%s不存在于列表中，结束进程\n", file);
+        exit(-1);
+    }
+    /* exit if res_upload <= 0 */
+    if(res_upload[idx] <= 0){
+        printf("文件%s上传次数已经达到上限，结束进程\n", file);
+        exit(-1);
+    }
+    /* now, we can upload file */
+
+
+    // TODO content-length变化项
+    int content_length;
+    /* send POST header */
+    sprintf(buffer, "POST /lib/smain.php?action=%%B5%%DA0%%D5%%C2 HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nContent-Length: %d\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nOrigin: http://%s:%d\r\nContent-Type: multipart/form-data; boundary=----WebKitFormBoundarynwBuibeBAVRnaE7q\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/lib/smain.php?action=%%B5%%DA0%%D5%%C2\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, content_length, ip, port, ip, port, PHPSESSID.c_str());
+    send(sock, buffer, strlen(buffer), 0);
+
+    std::map<const char *, const char *> dict; /* map file suffix to certain HTTP content-type */
+    dict["c"] = "text/plain";
+    dict["cpp"] = "text/plain";
+    dict["pdf"] = "application/pdf";
+    dict["bz2"] = "application/octet-stream";
+
+    /* send POST body */
+    // TODO 这个循环应该是动态变化的
+    // TODO content-length等于这里的字节数量
+    bool upload_forbid[100]; // TODO true则代表已经达到上限，禁止上传
+    char *file_type;// TODO file_type 本次要上传文件的类型
+    char *data;// TODO 本次上传文件的数据
+    // idx是一定上传成功的，然后剩下的，有两种可能，已经达到上限的 or 不上传的
+    // sprintf(buffer, "Content-Type: application/octet-stream\r\n"); // TODO 变化项
+    // Content-Type: application/octet-stream -> 没有上传的文件
+    // Content-Type: application/pdf -> test2.pdf
+    // Content-Type: text/plain -> test4.cpp
+    // Content-Type: text/plain -> test4.c
+    // Content-Type: application/octet-stream-> test1.tar.bz2
+    for (int i = 1; i <= file_num; i++)
+    {
+        sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"MAX_FILE_SIZE%d\"\r\n\r\n65536\r\n", i);
+        content_length += strlen(buffer);
+        if(i == idx){
+            /* 本次要上传的文件 */
+            sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"upfile%d\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n%s\r\n", i, file, file_type, data);
+            send(sock, buffer, strlen(buffer), 0);
+        }else if(!upload_forbid[i]){
+            /* 其他文件，没有达到上传次数限制 */
+            sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"upfile%d\"; filename=\"\"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n", i);
+            send(sock, buffer, strlen(buffer), 0);
+        }else{
+            /* 其他文件，已经达到上传次数限制 */
+            continue;
+        }
+        content_length += strlen(buffer);
+    }
+
+    /* submit */
+    sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"submit\"\r\n\r\n\xcc\xe1\xbd\xbb\x31\xcc\xe2\r\n------WebKitFormBoundarynwBuibeBAVRnaE7q--\r\n\r\n");
+    send(sock, buffer, strlen(buffer), 0);
+    content_length += strlen(buffer);
+    // 登录成功之后进入第三阶段，提交指定文件
+    // 首先进行文件是否存在的判断 文件名是否匹配选项的判断
+    // HTTP header + POST数据（大文件是自己直接上传呢，还是需要分割呢？暂时先理解成全部直接放到body里面）
+    // 根据res，进行判断，提示上传成功 or 上传失败
+    // TODO 如何判断上传文件成功 or 失败
+    close(sock);
+    outfile.close();
+
+
+
+
+    // 第0章目前已布置的作业共[6]题，已提交[5]题，其中[0]题已达最大提交次数 -> file_num
+    // <td>0</td><td>${test4.cpp}</td>  -> 文件名
+    // disabled>第${2}次&nbsp -> 剩余次数 max_upload - (${次数} - 1) =maxupload-当前次数+1
+
+    // std::smatch result;
+    // std::regex pattern("目前已布置的作业共[(\\d{*})]题，已提交[\\d{*}]题，其中[(\\d{*})]题已达最大提交次数");
+    // std::regex_match(temp, result, pattern);
+    // std::cout << result[0] << std::endl;
+    // std::cout << result[1] << std::endl;
+    // std::cout << result[2] << std::endl;
+    // std::cout << result[3] << std::endl;
 
 
     // /* 总数量 */
@@ -411,7 +528,7 @@ void Client::phase_2(){
     // int end = temp.find("]题，已提交[");
     // // std::cout << beg << std::endl;
     // // std::cout << end << std::endl;
-    // file_cnt = stoi(temp.substr(beg + 19, end - beg - 19));
+    // file_num = stoi(temp.substr(beg + 19, end - beg - 19));
     // printf("已布置%s\n", temp.substr(beg + 19, end - beg - 19).c_str());
 
 
@@ -431,54 +548,7 @@ void Client::phase_2(){
     // file_reach_max = stoi(temp.substr(beg + 9, end - beg - 10));
     // printf("已达上限%s\n", temp.substr(beg + 9, end - beg - 10).c_str());
 
-    // TODO
-    // 文件名不匹配 剩余上传次数为0 超过提交时间
 
-    // // 能不能直接上传文件？
-    // // TODO content-length变化项
-    // sprintf(buffer, "POST /lib/smain.php?action=%B5%DA0%D5%C2 HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nContent-Length: 1665\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nOrigin: http://%s:%d\r\nContent-Type: multipart/form-data; boundary=----WebKitFormBoundarynwBuibeBAVRnaE7q\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/lib/smain.php?action=%B5%DA0%D5%C2\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, ip, port, ip, port, PHPSESSID.c_str());
-    // send(sock, buffer, strlen(buffer), 0);
-    std::map<const char *, const char *> dict; /* map file suffix to certain HTTP content-type */
-    dict["c"] = "text/plain";
-    dict["cpp"] = "text/plain";
-    dict["pdf"] = "application/pdf";
-    dict["bz2"] = "application/octet-stream";
-
-    /* body */
-    // TODO 这个循环应该是动态变化的
-    int file_total = 6;
-    bool upload_forbid[100]; // TODO true则代表已经达到上限，禁止上传
-    for (int i = 1; i <= file_total; i++)
-    {
-        sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"MAX_FILE_SIZE%d\"\r\n\r\n65536\r\n", i);
-        if(!upload_forbid[i]){
-            sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\n");
-            send(sock, buffer, strlen(buffer), 0);
-            sprintf(buffer, "Content-Disposition: form-data; name=\"upfile%d\"; filename=\"%s\"\r\n", i, file); // TODO 变化项 如果有对应的文件，那么就是file指针，如果没有对应的文件，那么就是"" 或者没有%s这个字段
-            send(sock, buffer, strlen(buffer), 0);
-            sprintf(buffer, "Content-Type: application/octet-stream\r\n"); // TODO 变化项
-            // Content-Type: application/octet-stream -> 没有上传的文件
-            // Content-Type: application/pdf -> test2.pdf
-            // Content-Type: text/plain -> test4.cpp
-            // Content-Type: text/plain -> test4.c
-            // Content-Type: application/octet-stream-> test1.tar.bz2
-            send(sock, buffer, strlen(buffer), 0);
-            sprintf(buffer, "\r\n");
-            send(sock, buffer, strlen(buffer), 0);
-            sprintf(buffer, "\r\n"); // TODO 真正上传的数据 如果没有数据那么只有0d 0a
-            send(sock, buffer, strlen(buffer), 0);
-        }
-    }
-
-    /* submit */
-    sprintf(buffer, "------WebKitFormBoundaryah9ixVLBPYABOUJA\r\nContent-Disposition: form-data; name=\"submit\"\r\n\r\n\xcc\xe1\xbd\xbb\x31\xcc\xe2\r\n------WebKitFormBoundaryah9ixVLBPYABOUJA--\r\n\r\n");
-    send(sock, buffer, strlen(buffer), 0);
-    // 登录成功之后进入第三阶段，提交指定文件
-    // 首先进行文件是否存在的判断 文件名是否匹配选项的判断
-    // HTTP header + POST数据（大文件是自己直接上传呢，还是需要分割呢？暂时先理解成全部直接放到body里面）
-    // 根据res，进行判断，提示上传成功 or 上传失败
-    close(sock);
-    outfile.close();
 }
 
 int main(int argc, char** argv)
@@ -496,6 +566,8 @@ int main(int argc, char** argv)
         {"--file", req_arg, must_appear, is_string, {.str_val = file}, 0, 0, 0},
     };
     my_handle_option(options, 5, argc, argv);
+
+    // TODO 首先把Password中特殊的字符进行替换，比如! => %21
 
     Client client(ip, port, user, passwd, file);
     client.Run();
