@@ -1,7 +1,9 @@
+  
 #include <regex>
 #include <string>
 #include <vector>
 #include <fstream>
+#include <iostream>
 using namespace std;
 
 /**
@@ -14,7 +16,25 @@ using namespace std;
  * output : 提取出来的数字打印出来
  */ 
 void search_1(string temp){
+    regex pattern("\\[\\d+\\]");
+    smatch result;
+    string::const_iterator iter_begin = temp.cbegin();
+    string::const_iterator iter_end = temp.cend();
 
+    while(regex_search(iter_begin, iter_end, result, pattern))
+    {
+        //cout << "查找成功：" << result[0] << endl;
+        std::string res = result[0];
+        //cout << "查找成功：" << res << endl;
+        string snum = res.substr(1, res.size()-2);
+        //cout<< snum <<endl;
+
+        int number = atoi(snum.c_str());
+        cout<<number<<endl;
+
+        iter_begin = result[0].second;
+    }
+    return ;
 }
 
 /**
@@ -30,7 +50,22 @@ void search_1(string temp){
  * 
  */ 
 void search_2(string temp){
+    regex pattern("onChange\\((\\d+)[\\d,\\s]*'([^<>/\\|:\"\\*\?]+\\.\\w+)'");
+    smatch result;
+    string::const_iterator iter_begin = temp.cbegin();
+    string::const_iterator iter_end = temp.cend();
 
+    while(regex_search(iter_begin, iter_end, result, pattern))
+    {
+        //cout << "查找成功：" << result[0] << endl;
+        std::string res = result[1];
+        cout << "作业序号:" << res << endl;
+        std::string res2 = result[2];
+        cout << "文件名称:" << res2 << endl;
+
+        iter_begin = result[0].second;
+    }
+    return ;
 }
 
 
@@ -45,16 +80,60 @@ void search_2(string temp){
  * output: for循环，循环内部，打印"提交次数" "文件序号" "文件名"
  */ 
 void search_3(string temp){
+    regex pattern("\"date\\d+\"[\\s\\w]*>第(\\d+)次[^(]*onChange\\((\\d+)[\\d,\\s]*'([^<>/\\|:\"\\*\?]+\\.\\w+)'");
+    smatch result;
+    string::const_iterator iter_begin = temp.cbegin();
+    string::const_iterator iter_end = temp.cend();
 
+    while(regex_search(iter_begin, iter_end, result, pattern))
+    {
+        //cout << "查找成功：" << result[0] << endl;
+
+        std::string res = result[1];
+        cout << "提交次数:" << res << endl;
+
+        std::string res2 = result[2];
+        cout << "作业序号:" << res2 << endl;
+
+        std::string res3 = result[3];
+        cout << "文件名称:" << res3 << endl;
+
+        iter_begin = result[0].second;
+    }
+    
+    
+    regex pattern2("\"date\\d+\"[\\s\\w]*>(尚未提交)[^(]*onChange\\((\\d+)[\\d,\\s]*'([^<>/\\|:\"\\*\?]+\\.\\w+)'");
+    smatch result2;
+    string::const_iterator iter_begin2 = temp.cbegin();
+    string::const_iterator iter_end2 = temp.cend();
+
+    while(regex_search(iter_begin2, iter_end2, result2, pattern2))
+    {
+        //cout << "查找成功：" << result2[0] << endl;
+
+        std::string res = result2[1];
+        cout << "提交次数:" << res << endl;
+
+        std::string res2 = result2[2];
+        cout << "作业序号:" << res2 << endl;
+
+        std::string res3 = result2[3];
+        cout << "文件名称:" << res3 << endl;
+
+        iter_begin2 = result2[0].second;
+    }
+
+    return ;
 }
 
 int main(){
     fstream file;
     string temp;
-    file.open("temp", ios::in);
+    file.open("tmp", ios::in);
     getline(file, temp);
     file.close();
 
+    //printf("%s\n", temp.c_str());
     search_1(temp);
     search_2(temp);
     search_3(temp);
