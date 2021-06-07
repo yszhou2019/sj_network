@@ -1,0 +1,13 @@
+[Unit]
+Description=test_1752240.service
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/stu/test_1752240
+# PIDFile=/var/run/test_1752240.pid	
+StandardOutput=syslog
+# StandardOutput=tty
+StandardError=inherit
+
+[Install]
+WantedBy=multi-user.target

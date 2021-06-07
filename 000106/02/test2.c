@@ -1,0 +1,9 @@
+#include <stdio.h>
+int fun();
+int main()
+{
+	fun();
+	printf("Àß‘∆÷‹\n");
+	return 0;
+}
+

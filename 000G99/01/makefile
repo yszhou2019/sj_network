@@ -1,6 +1,6 @@
 CC = g++
 
-SRCS = proxy.cpp client.cpp
+SRCS = proxy.cpp client.cpp proxy-debug.cpp
 OBJS = $(SRCS:.cpp=.o)
 TRGS = $(patsubst %.cpp, %, $(SRCS))
 

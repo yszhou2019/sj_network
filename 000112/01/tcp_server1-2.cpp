@@ -1,0 +1,62 @@
+#include <unistd.h>
+#include <getopt.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include "my_etc.h"
+
+int main(int argc, char** argv)
+{
+    char ip[30];
+    int port = -1;
+    Choice options[] = {
+        {"--port", req_arg, must_appear, is_int, {.int_val=&port}, 0, 65535, 4000},
+        {"--ip", req_arg, must_appear, is_string, {.str_val=ip}, 0, 0, 0},
+    };
+    my_handle_option(options, 2, argc, argv);
+    
+    my_daemon(1,1);
+    int sock = create_server(ip, port, false);
+    
+    // listen to socket
+    int ret = listen(sock, 5);
+    if ( ret < 0){
+        perror("[listen failed]");
+        exit(EXIT_FAILURE);
+    }else{
+        printf("[listening to port %d]\n",port);
+    }
+
+    struct sockaddr_in client;
+    socklen_t addrlen = sizeof(client);
+    int connfd;
+    int res;
+    // print remote ip and port
+    char remote[INET_ADDRSTRLEN];
+    char buffer[200] = {0};
+    int pid;
+    while(1){
+        // accept from socket
+        connfd = accept(sock, (struct sockaddr *)&client,&addrlen);
+        if (connfd < 0){
+            printf("[accept failed, errno is %d]",errno);
+            exit(EXIT_FAILURE);
+        }else{
+            printf("[connected with %s %d]\n",inet_ntop(AF_INET,&client.sin_addr,remote,INET_ADDRSTRLEN),ntohs(client.sin_port));
+            pid = fork();
+            if(pid==0){
+                res = read(connfd, buffer, 20);
+                printf("[read return value is %d]\n", res);
+                printf("[errno is %d]\n",errno);
+            }
+        }
+    }
+    printf("[connection over]\n");
+    return 0;
+}
