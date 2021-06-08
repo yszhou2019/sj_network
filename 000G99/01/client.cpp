@@ -250,7 +250,6 @@ private:
     void parse_login_page();
     void post_login_request();
     void parse_login_succ();
-    void get_main_menu();
     void get_file_menu();
     void parse_file_menu();
     void check_submit_illegal();
@@ -354,7 +353,6 @@ void Client::Run(){
     parse_login_page();
     post_login_request();
     parse_login_succ();
-    get_main_menu();
     get_file_menu();
     parse_file_menu();
     check_submit_illegal();
@@ -438,23 +436,6 @@ void Client::parse_login_succ(){
     }
     printf("登录失败，账号密码不匹配\n");
     exit(-1);
-}
-
-
-// TODO 这一步骤似乎没有必要
-/**
- * 函数功能: 登录成功后，发起GET请求，获取首页面，将获取到的页面写入 log_mainmenu 文件
- * 函数参数: 无
- * 函数返回值: void
- */ 
-void Client::get_main_menu(){
-    int sock = create_socket(serv_addr);
-
-    /* send GET request */
-    sprintf(buffer, "GET /lib/smain.php HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/login.php\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, ip, port, PHPSESSID.c_str());
-    send(sock, buffer, strlen(buffer), 0);
-
-    write_reponse_to_file(sock, "log_mainmenu");
 }
 
 /**
