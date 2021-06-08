@@ -189,7 +189,7 @@ void set_nonblock(int sock) {
         perror("fcntl(F_SETFL) failed");
         exit(EXIT_FAILURE);
     }
-    printf("[set socket NONBLOCK, return values is %d]\n", res);
+    // printf("[set socket NONBLOCK, return values is %d]\n", res);
 }
 
 // 获取本机所有的ip数量以及ip地址
