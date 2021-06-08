@@ -1,4 +1,4 @@
-  
+ 
 #include <regex>
 #include <string>
 #include <vector>
@@ -175,8 +175,51 @@ RET_INFO search_4(){
     ifstream in;
     in.open("phase_2.log", ios::in);
     RET_INFO res;
-    // ...
+    
+    //read string from file
+    string temp;
+    regex pattern("alert\\('([^']*)'\\)");
+    smatch result;
+
+    //record the string content and record whether find the string
+    string alertStr;
+    bool isFind=false;
+    while(getline(in, temp))
+    {
+        string::const_iterator iter_begin = temp.cbegin();
+        string::const_iterator iter_end = temp.cend();
+        //cout << temp << endl;
+        while(regex_search(iter_begin, iter_end, result, pattern))
+        {
+            // cout<< result[0] << endl;
+            // cout<< result[1] << endl;
+            alertStr = result[1];
+            isFind = true;
+            break;
+            iter_begin = result[0].second;
+        }
+    }
     in.close();
+
+    //search the string "成功" is in the string alertStr or not
+    if(regex_search(alertStr, regex("成功")))
+    {
+        res.isSucc = true;
+        res.info = alertStr;
+    }
+    else
+    {
+        res.isSucc = false;
+        if(isFind)
+        {
+            res.info = alertStr;
+        }
+        else
+        {
+            res.info = "can not find string like 'alert xxx'";
+        }
+    }
+
     return res;
 }
 
@@ -276,16 +319,18 @@ std::string UrlDecode(const std::string& str)
 
 int main(){
     map<int, Homework> resmap;
+    RET_INFO ret_info;
     fstream file;
     string temp;
     file.open("tmp", ios::in);
     getline(file, temp);
     file.close();
 
-    //printf("%s\n", temp.c_str());
     search_1(temp);
     search_2(temp);
     resmap = search_3(temp);
+    ret_info = search_4();
+    cout << ret_info.isSucc << " " << ret_info.info << endl;
 
     map<int, Homework>::iterator iter;
     iter = resmap.begin();
