@@ -20,9 +20,6 @@
 
 #include <string>
 #include <fstream>
-#include <iostream> /* debug */
-using std::cout;
-using std::endl;
 
 const int BUFFER_SIZE = 60000;
 
@@ -47,7 +44,6 @@ std::vector<int> parse_file_num(const std::string temp){
         res.push_back(number);
         iter_begin = result[0].second;
     }
-    printf("解析1没问题\n");
     return res;
 }
 
@@ -106,7 +102,6 @@ std::map<int, FILE_INFO> parse_file_info(const std::string temp){
         iter_begin2 = result2[0].second;
     }
 
-    printf("解析2没问题\n");
     return resmap;
 }
 
@@ -146,7 +141,7 @@ std::string UrlEncode(const std::string& str)
 }
 
 
-const int MAX_SUBMIT = 3;                                         /* 最大允许上传次数 */
+const int MAX_SUBMIT = 3;   /* 最大允许上传次数 */
 const int MAX_EVENT_NUMBER = 1;
 
 /**
@@ -159,7 +154,7 @@ int create_socket(const sockaddr_in& serv_addr){
         printf("connect to server failed\n");
         exit(-1);
     }else{
-        printf("connect success\n");
+        // printf("connect success\n");
     }
     set_nonblock(sock);
     return sock;
@@ -190,8 +185,8 @@ private:
     char ip[32];
     int port;
     int user;
-    char passwd[32];
-    char file[32];
+    char passwd[64];/* 这里passwd和file的64，实际上并不正确，应该设置成string */
+    char file[64];
     int epoll_fd;
     epoll_event events[MAX_EVENT_NUMBER];
     sockaddr_in serv_addr;
@@ -247,6 +242,7 @@ public:
 void Client::phase_0(){
     int sock = create_socket(serv_addr);
 
+    // TODO send_GET_header()
     sprintf(buffer, "GET / HTTP/1.1\r\nHost: %s:%d\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nConnection: keep-alive\r\n\r\n", ip, port);
     send(sock, buffer, strlen(buffer), 0);
 
@@ -269,7 +265,6 @@ void Client::phase_0(){
         res = recv(sock, buffer, sizeof(buffer), 0);
         // TODO 这里并不正确，会导致有时候html还没有接收完毕就退出循环，后续的字符串解析无法进行
         if(res == -1 && errno == EAGAIN){
-            printf("close socket\n");
             remove_event(epoll_fd, sock);
             close(sock);
             break;
@@ -281,13 +276,14 @@ void Client::phase_0(){
     }
 
     /* find out PHPSESSID and set PHPSESSID */
+    // TODO parse()
     outfile.seekg(std::ios::beg);
     std::string temp;
     while (getline(outfile, temp)){
         int res = temp.find("PHPSESSID=");
         if(res != std::string::npos){
             PHPSESSID = temp.substr(res + 10, 26); /* PHPSESSID length 26 bytes */
-            printf("%s\n", PHPSESSID.c_str());
+            // printf("%s\n", PHPSESSID.c_str());
             break;
         }
     }
@@ -296,7 +292,7 @@ void Client::phase_0(){
         if(res != std::string::npos){
             int end = temp.find_last_of("=");
             auth_ask = temp.substr(res + 16, end - res - 16);
-            printf("%s\n", auth_ask.c_str());
+            // printf("%s\n", auth_ask.c_str());
             break;
         }
     }
@@ -306,7 +302,7 @@ void Client::phase_0(){
             res = temp.find_last_of("=");
             int end = temp.find_last_of(">");
             auth_answer = temp.substr(res + 1, end - res - 2);
-            printf("%s\n", auth_answer.c_str());
+            // printf("%s\n", auth_answer.c_str());
             getline(outfile, temp);
             break;
         }
@@ -361,12 +357,11 @@ void Client::phase_1(){
     // res需要解析是否存在refresh字段，从而判断是否登录成功
     
     char http_body[200];
-    // TODO password中的特殊字符需要进行替换
     sprintf(http_body, "username=%d&password=%s&input_ans=%s&auth_ask=%s%%3D&auth_answer=%s&login=%%B5%%C7%%C2%%BC\r\n", user, passwd, auth_answer.c_str(), auth_ask.c_str(), auth_answer.c_str());
 
     sprintf(buffer, "POST / HTTP/1.1\r\nHost: %s:%d\r\n", ip, port);
     send(sock, buffer, strlen(buffer), 0);
-    sprintf(buffer, "Content-Length: %d\r\n", strlen(http_body)); // TODO
+    sprintf(buffer, "Content-Length: %d\r\n", strlen(http_body));
     send(sock, buffer, strlen(buffer), 0);
     sprintf(buffer, "Cache-Control: max-age=0\r\n");
     send(sock, buffer, strlen(buffer), 0);
@@ -395,13 +390,7 @@ void Client::phase_1(){
 
     /* post body */
     send(sock, http_body, strlen(http_body), 0);
-    // TODO 需要替换掉password中间的特殊字符
-
-
-    std::string temp = http_body;
-    std::cout << temp << std::endl;
-    std::cout << temp.size() << std::endl;
-    printf("%s\n", http_body); /* DEBUG */
+    // printf("%s\n", http_body);
 
     /* edge-triggered */
     add_event(epoll_fd, sock, EPOLLIN | EPOLLET);
@@ -411,12 +400,12 @@ void Client::phase_1(){
     if(!outfile){
         printf("create file phase_1.log failed\n");
     }
-    printf("登录中...\n");/* DEBUG */
+    printf("登录中...\n");
     int res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
     if(res < 0){
         printf("epoll_wait failed\n");
     }
-    printf("recving...\n");/* DEBUG */
+    // printf("recving...\n");
     /* 不断接收数据，直到读取失败 */
     while(1){
         res = recv(sock, buffer, sizeof(buffer), 0);
@@ -431,6 +420,7 @@ void Client::phase_1(){
 
     outfile.seekg(std::ios::beg);
     bool loginSucc = false;
+    std::string temp;
     while (getline(outfile, temp)) {
         res = temp.find("Refresh: 0;url=./lib/smain.php");
         if(res!=std::string::npos){
@@ -449,17 +439,16 @@ void Client::phase_1(){
     sprintf(buffer, "GET /lib/smain.php HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/login.php\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, ip, port, PHPSESSID.c_str());
     send(sock, buffer, strlen(buffer), 0);
 
-    printf("waiting...\n");/* DEBUG */
+    // printf("waiting...\n");/* DEBUG */
     res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
     if(res < 0){
         printf("epoll_wait failed\n");
     }
-    printf("recving...\n");/* DEBUG */
+    // printf("recving...\n");/* DEBUG */
     // outfile.seekp(std::ios::end);
     while (1) {
         res = recv(sock, buffer, sizeof(buffer), 0);
         if(res == -1 && errno == EAGAIN){
-            printf("close socket\n");
             remove_event(epoll_fd, sock);
             close(sock);
             break;
@@ -484,14 +473,12 @@ void Client::phase_2(){
     // 存在文件并且文件length>0，准备开始上传
     // 如果文件名不匹配，那么还是报错
     // 
-    /* GET HTTP header */
     int sock = create_socket(serv_addr);
 
-    // TODO
-    // 不能跳过点击菜单，需要点击菜单获取所有可提交的文件
+    /* 点击菜单，获取所有可提交的文件 */
+    /* GET HTTP header */
     sprintf(buffer, "GET /lib/smain.php?action=%%B5%%DA0%%D5%%C2 HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/lib/smain.php\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, ip, port, PHPSESSID.c_str());
     send(sock, buffer, strlen(buffer), 0);
-
 
     /* edge-triggered */
     add_event(epoll_fd, sock, EPOLLIN | EPOLLET);
@@ -500,7 +487,7 @@ void Client::phase_2(){
     if(epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1)<0){
         printf("epoll_wait failed\n");
     }
-    printf("recving...\n");
+    // printf("recving...\n");
     
     std::fstream outfile;
     outfile.open("phase_2.log", std::ios::in | std::ios::out | std::ios::trunc);
@@ -529,11 +516,11 @@ void Client::phase_2(){
     /* 开始解析HTML */
     std::vector<int> file_number = parse_file_num(temp);        /* 文件总数 已提交总数 已达上限总数 */
     std::map<int, FILE_INFO> file_info = parse_file_info(temp); /* 文件序号 . 已提交次数 文件名 */
-    printf("正常返回 vec len %d\n",file_number.size());
+    // printf("正常返回 vec len %d\n",file_number.size());
     int file_num = file_number[0];                              /* 文件列表的文件数量 */
     int file_uploaded = file_number[1];                         /* 已提交文件数量 */
     int file_reach_max = file_number[2];                        /* 已经达到上限的文件数量 */
-    printf("%d %d %d\n", file_num, file_uploaded, file_reach_max);
+    // printf("%d %d %d\n", file_num, file_uploaded, file_reach_max);
 
     /* print file list */
     printf("文件序号\t\t文件名称\t\t当前提交次数\n");
@@ -555,9 +542,10 @@ void Client::phase_2(){
     // then 上传文件
     std::ifstream infile;
     infile.open(file, std::ios::in);
+    // TODO check_file_illegal()
     /* exit if no file */
     if(!infile){
-        printf("本地文件%s不存在，结束进程\n", file);
+        printf("本地文件%s不存在，结束上传\n", file);
         exit(-1);
     }
     /* get file length */
@@ -568,7 +556,7 @@ void Client::phase_2(){
     /* exit if length == 0 */
     printf("文件%s字节数量=%d\n", file, file_length);
     if (file_length == 0) {
-        printf("文件%s字节数量=0，结束进程\n", file);
+        printf("文件%s字节数量=0，结束上传\n", file);
         exit(-1);
     }
     /* exit if file_name not match */
@@ -586,12 +574,12 @@ void Client::phase_2(){
         }
     }
     if (!match){
-        printf("文件%s不存在于列表中，结束进程\n", file);
+        printf("文件%s不存在于列表中，结束上传\n", file);
         exit(-1);
     }
     /* exit if res_upload >= max */
     if(file_info[idx].submit_num >= MAX_SUBMIT){
-        printf("文件%s上传次数已经达到上限，结束进程\n", file);
+        printf("文件%s上传次数已经达到上限，结束上传\n", file);
         exit(-1);
     }
     /* now, we can upload file */
@@ -602,7 +590,7 @@ void Client::phase_2(){
     auto cur = file_info[idx];
     int dot_pos = cur.file_name.find(".");
     if(dot_pos == std::string::npos){
-        printf("文件%s没有后缀名，结束进程\n", cur.file_name.c_str());
+        printf("文件%s没有后缀名，结束上传\n", cur.file_name.c_str());
         exit(-1);
     }
     std::string suffix = cur.file_name.substr(dot_pos + 1);
@@ -617,6 +605,7 @@ void Client::phase_2(){
     /* 本次要上传文件的类型 */
     std::string file_type = dict[suffix];
     /* send POST header */
+    // TODO send_POST_header()
     int content_length = compute_content_length(idx, file_length, file_info, file_type);
     sprintf(buffer, "POST /lib/smain.php?action=%%B5%%DA0%%D5%%C2 HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nContent-Length: %d\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nOrigin: http://%s:%d\r\nContent-Type: multipart/form-data; boundary=----WebKitFormBoundarynwBuibeBAVRnaE7q\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/lib/smain.php?action=%%B5%%DA0%%D5%%C2\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, content_length, ip, port, ip, port, PHPSESSID.c_str());
     send(sock, buffer, strlen(buffer), 0);
@@ -624,6 +613,7 @@ void Client::phase_2(){
     /* POST body begin */
     /* content-length等于post body的字节数量 */
     // idx是一定上传成功的，然后剩下的，有两种可能，已经达到上限的 or 不上传的
+    // TODO send_POST_body()
     for (int i = 1; i <= file_num; i++)
     {
         sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"MAX_FILE_SIZE%d\"\r\n\r\n65536\r\n", i);
@@ -632,15 +622,30 @@ void Client::phase_2(){
             /* 本次要上传的文件 */
             sprintf(buffer, "------WebKitFormBoundarynwBuibeBAVRnaE7q\r\nContent-Disposition: form-data; name=\"upfile%d\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n", i, file_info[i].file_name.c_str(), file_type.c_str());
             send(sock, buffer, strlen(buffer), 0);
+            // TODO upload_file_data()
             /* send file data begin */
-            int res_file_length = file_length;
-            while(res_file_length > BUFFER_SIZE){
-                infile.read(buffer, BUFFER_SIZE);
-                res_file_length -= BUFFER_SIZE;
-                send(sock, buffer, BUFFER_SIZE, 0);
+            int read_file_length = file_length; /* 剩余待读取的文件长度 */
+            int send_file_length = 0;
+            int buffer_len = 0;
+            while(send_file_length != file_length){
+                /* 有剩余空间则读取 file -> buffer */
+                if( read_file_length > 0 && buffer_len < BUFFER_SIZE){
+                    int read_bytes = (read_file_length > BUFFER_SIZE - buffer_len) ? BUFFER_SIZE - buffer_len : read_file_length;
+                    infile.read(buffer + buffer_len, read_bytes);
+                    read_file_length -= read_bytes;
+                    buffer_len += read_bytes;
+                }
+                /* 发送 buffer -> server */
+                int res = send(sock, buffer, buffer_len, 0);
+                if(res == -1)
+                    usleep(1);
+                else{
+                    send_file_length += res;
+                    buffer_len -= res;
+                    memmove(buffer, buffer + res, buffer_len);
+                }
+                // printf("本次发送%d 剩余字节数量%d\n", res, file_length - send_file_length);
             }
-            infile.read(buffer, res_file_length);
-            send(sock, buffer, res_file_length, 0);
             /* send file data end */
             sprintf(buffer, "\r\n");
             send(sock, buffer, strlen(buffer), 0);
@@ -669,11 +674,10 @@ void Client::phase_2(){
         printf("epoll_wait failed\n");
         exit(-1);
     }
-    printf("recving...\n");
+    // printf("recving...\n");
     while(1){
         int res = recv(sock, buffer, sizeof(buffer), 0);
         if(res == -1 && errno == EAGAIN){
-            printf("close socket\n");
             remove_event(epoll_fd, sock);
             close(sock);
             break;
@@ -696,8 +700,8 @@ int main(int argc, char** argv)
     char ip[32];
     int port = -1;
     int user = -1;
-    char passwd[32];
-    char file[32];
+    char passwd[64];
+    char file[64];
     Choice options[] = {
         {"--ip", req_arg, must_appear, is_string, {.str_val = ip}, 0, 0, 0},
         {"--port", req_arg, must_appear, is_int, {.int_val = &port}, 0, 65535, 4000},
@@ -707,7 +711,8 @@ int main(int argc, char** argv)
     };
     my_handle_option(options, 5, argc, argv);
 
-    // TODO 首先把Password中特殊的字符进行替换，比如! => %%21
+    /* 把Password中特殊的字符进行替换，比如! => %21 */
+    // printf("%s\n", passwd);
     std::string encoded_pwd = UrlEncode(passwd);
 
     Client client(ip, port, user, encoded_pwd.c_str(), file);
