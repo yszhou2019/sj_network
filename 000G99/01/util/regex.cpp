@@ -5,6 +5,8 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <iomanip>
+#include <assert.h>
 using namespace std;
 
 /**
@@ -145,6 +147,133 @@ map<int, Homework> search_3(string temp){
     return resmap;
 }
 
+struct RET_INFO{
+    bool isSucc;
+    string info;
+};
+/**
+ * 功能描述：从phase_2.log中，解析出来最后一个的alert()信息
+ * 
+ * 比如，如果最后一个alert如下
+ * alert('文件上传信息：\ntest4.cpp：成功(53字节)\n')
+ *        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * 那么，返回值：{
+ *      isSucc: true,
+ *      info: "文件上传信息：\ntest4.cpp：成功(53字节)\n"
+ * }
+ * 
+ * 比如，如果最后一个alert如下
+ * alert('文件上传信息：\ntest6-socket-tcp-sync.pdf：失败(两次提交至少间隔30秒)\n')
+ *        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * 返回值{
+ *      isSucc: false,
+ *      info: "文件上传信息：\ntest6-socket-tcp-sync.pdf：失败(两次提交至少间隔30秒)\n"
+ * }
+ * 
+ */ 
+RET_INFO search_4(){
+    ifstream in;
+    in.open("phase_2.log", ios::in);
+    RET_INFO res;
+    // ...
+    in.close();
+    return res;
+}
+
+
+/**
+ * uri编码字符串.
+ * 
+ * \param in 必须是utf-8编码的！
+ * \return uri编码后的字符串。
+ */
+std::string encodeURIComponent(std::string in)
+{
+    std::stringstream ssUri;
+    for (char c : in)
+    {
+        //0-9A-Za-z-_.!~*'()
+        if ((c >= 'a' && c <= 'z') 
+            || (c >= 'A' && c <= 'Z') 
+            || (c >= '0' && c <= '9')
+            || c == '!' 
+            || (c >= '\'' && c <= '*') 
+            || c == '-' 
+            || c == '.' 
+            || c== '_' 
+            || c== '~')
+        {
+            ssUri << c;
+        }
+        else
+        {
+            ssUri << "%";
+            if ((c & 0xf0) == 0)
+                ssUri << 0;
+            ssUri << setiosflags(ios::uppercase) << hex << (c & 0xff);
+        }
+    }
+    return ssUri.str();
+}
+
+unsigned char ToHex(unsigned char x) 
+{ 
+    return  x > 9 ? x + 55 : x + 48; 
+}
+
+unsigned char FromHex(unsigned char x) 
+{ 
+    unsigned char y;
+    if (x >= 'A' && x <= 'Z') y = x - 'A' + 10;
+    else if (x >= 'a' && x <= 'z') y = x - 'a' + 10;
+    else if (x >= '0' && x <= '9') y = x - '0';
+    else assert(0);
+    return y;
+}
+
+std::string UrlEncode(const std::string& str)
+{
+    std::string strTemp = "";
+    size_t length = str.length();
+    for (size_t i = 0; i < length; i++)
+    {
+        if (isalnum((unsigned char)str[i]) || 
+            (str[i] == '-') ||
+            (str[i] == '_') || 
+            (str[i] == '.') || 
+            (str[i] == '~'))
+            strTemp += str[i];
+        else if (str[i] == ' ')
+            strTemp += "+";
+        else
+        {
+            strTemp += '%';
+            strTemp += ToHex((unsigned char)str[i] >> 4);
+            strTemp += ToHex((unsigned char)str[i] % 16);
+        }
+    }
+    return strTemp;
+}
+
+std::string UrlDecode(const std::string& str)
+{
+    std::string strTemp = "";
+    size_t length = str.length();
+    for (size_t i = 0; i < length; i++)
+    {
+        if (str[i] == '+') strTemp += ' ';
+        else if (str[i] == '%')
+        {
+            assert(i + 2 < length);
+            unsigned char high = FromHex((unsigned char)str[++i]);
+            unsigned char low = FromHex((unsigned char)str[++i]);
+            strTemp += high*16 + low;
+        }
+        else strTemp += str[i];
+    }
+    return strTemp;
+}
+
 int main(){
     map<int, Homework> resmap;
     fstream file;
@@ -165,5 +294,10 @@ int main(){
         cout<<iter->first<<" "<<iter->second.submitNum<<" "<<iter->second.homeworkName<<endl;
         iter++;
     }
+
+    cout << encodeURIComponent("TEMPpwd060!") << endl;
+    cout << encodeURIComponent("~and!and/and\\and%") << endl;
+    cout << UrlEncode("TEMPpwd060!") << endl;
+    cout << UrlEncode("~and!and/and\\and%") << endl;
     return 0;
 }
