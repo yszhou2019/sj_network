@@ -182,7 +182,7 @@ std::string UrlEncode(const std::string& str)
 
 
 const int MAX_SUBMIT = 3;   /* 最大允许上传次数 */
-const int MAX_EVENT_NUMBER = 1;
+const int MAX_EVENT_NUMBER = 5;
 
 /**
  * working in non-block mode
@@ -303,6 +303,8 @@ void Client::get_login_page(){
     /* send_GET_header() */
     sprintf(buffer, "GET / HTTP/1.1\r\nHost: %s:%d\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nConnection: keep-alive\r\n\r\n", ip, port);
     send(sock, buffer, strlen(buffer), 0);
+
+    printf("获取登录首页...\n");
 
     /* write response to file */
     write_reponse_to_file(sock, "log_loginpage");
@@ -451,7 +453,7 @@ void Client::get_file_menu(){
     sprintf(buffer, "GET /lib/smain.php?action=%%B5%%DA0%%D5%%C2 HTTP/1.1\r\nHost: %s:%d\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nReferer: http://%s:%d/lib/smain.php\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6\r\nCookie: PHPSESSID=%s\r\n\r\n", ip, port, ip, port, PHPSESSID.c_str());
     send(sock, buffer, strlen(buffer), 0);
     
-    printf("获取可上传文件列表...\n");
+    printf("获取文件列表...\n");
     
     write_reponse_to_file(sock, "log_filemenu");
 }
@@ -653,28 +655,37 @@ void Client::upload_file_data(int sock){
  * 函数功能: 将sock中的数据写入 file_name 对应的文件中
  * 函数参数: 无
  * 函数返回值: void
- * 详细描述: sock对应ET触发
+ * 详细描述: sock采用ET触发，持续侦听，直到socket被关闭，说明数据接收完毕
  */ 
 void Client::write_reponse_to_file(int sock, std::string file_name){
+    // epoll直到检测到socket被关闭，说明response接收完毕
     std::ofstream logfile;
     logfile.open(file_name, std::ios::out);
     
     /* edge-triggered */
-    add_event(epoll_fd, sock, EPOLLIN | EPOLLET);
+    add_event(epoll_fd, sock, EPOLLIN | EPOLLET | EPOLLRDHUP );
 
-    if(epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1)<0){
-        printf("epoll_wait failed\n");
-    }
+    while(1){
+        /* 持续接收数据，直到触发EPOLLRDHUP事件，说明socket被关闭 */
+        if(epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1)<0){
+            printf("epoll_wait failed\n");
+        }
 
-    while (1){
-        int res = recv(sock, buffer, sizeof(buffer), 0);
-        if(res == -1 && errno == EAGAIN){
+        if(events[0].events & EPOLLRDHUP){
             remove_event(epoll_fd, sock);
             close(sock);
             break;
         }
-        for (int i = 0; i < res;i++){
-            logfile.put(buffer[i]);
+
+        /* recv data */
+        while (1){
+            int res = recv(sock, buffer, sizeof(buffer), 0);
+            if(res == -1 && errno == EAGAIN){
+                break;
+            }
+            for (int i = 0; i < res;i++){
+                logfile.put(buffer[i]);
+            }
         }
     }
 
