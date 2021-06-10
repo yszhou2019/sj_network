@@ -258,7 +258,7 @@ private:
     void parse_post_succ();
     int compute_content_length();
     void upload_file_data(int);
-    void write_reponse_to_file(int, std::string);
+    void write_reponse_to_file(int, std::string, int);
 
 public:
     Client(const char* _ip, int _port, int _user, const char* _pwd, const char* _file):
@@ -307,7 +307,7 @@ void Client::get_login_page(){
     printf("获取登录首页...\n");
 
     /* write response to file */
-    write_reponse_to_file(sock, "log_loginpage");
+    write_reponse_to_file(sock, "log_loginpage", 500);
 }
 
 /**
@@ -415,7 +415,7 @@ void Client::post_login_request(){
 
     printf("登录中...\n");
 
-    write_reponse_to_file(sock, "log_login");
+    write_reponse_to_file(sock, "log_login", 500);
 }
 
 /**
@@ -455,7 +455,7 @@ void Client::get_file_menu(){
     
     printf("获取文件列表...\n");
     
-    write_reponse_to_file(sock, "log_filemenu");
+    write_reponse_to_file(sock, "log_filemenu", 500);
 }
 
 /**
@@ -618,7 +618,7 @@ int Client::compute_content_length(){
 
 /**
  * 函数功能: 将文件进行上传
- * 函数参数: 无
+ * 函数参数: sock 代表对端的socket
  * 函数返回值: void
  */ 
 void Client::upload_file_data(int sock){
@@ -653,12 +653,14 @@ void Client::upload_file_data(int sock){
 
 /**
  * 函数功能: 将sock中的数据写入 file_name 对应的文件中
- * 函数参数: 无
+ * 函数参数: int sock 代表对端的socket
+ *          string file_name 将本次的response写入该文件中
+ *          int waitms 本次接收数据的超时时间(单位ms)
  * 函数返回值: void
  * 详细描述: sock采用ET触发，持续侦听，设置超时时间300ms，超时之后关闭socket，说明数据接收完毕(超时时间)
- *          不能监听EPOLLRDHUP事件来代表response接收完毕(对端关闭socket可能延时很长)
+ *          可以采用监听EPOLLRDHUP事件来代表response接收完毕(对端关闭socket可能延时很长)，而且接收response绝对正确，但是延时很长(proxy监听到server断开连接之后, proxy才会断开与client的连接)
  */ 
-void Client::write_reponse_to_file(int sock, std::string file_name){
+void Client::write_reponse_to_file(int sock, std::string file_name, int waitms){
     // epoll直到检测到socket被关闭，说明response接收完毕
     std::ofstream logfile;
     logfile.open(file_name, std::ios::out);
@@ -667,7 +669,6 @@ void Client::write_reponse_to_file(int sock, std::string file_name){
     // add_event(epoll_fd, sock, EPOLLIN | EPOLLET | EPOLLRDHUP );
     add_event(epoll_fd, sock, EPOLLIN | EPOLLET );
 
-    int waitms = 300;
 
     while(1){
         /* 持续接收数据，等待超时，代表数据接收完毕 */
@@ -706,6 +707,7 @@ void Client::post_file_request(){
     int sock = create_socket(serv_addr);
 
     /* now, we can upload file */
+    printf("文件上传中...\n");
 
     /* content-length等于post body的字节数量 */
     int content_length = compute_content_length();
@@ -749,8 +751,17 @@ void Client::post_file_request(){
     send(sock, buffer, strlen(buffer), 0);
 
     /* POST body end */
-
-    write_reponse_to_file(sock, "log_postfile");
+    printf("文件上传完毕\n等待服务端处理\n");
+    
+    /* 5M以上 等待3000ms比较稳妥 */
+    /* 1M以上 等待2000ms比较稳妥 */
+    int waitms = 500;
+    if(content_length>5000000){
+        waitms = 3000;
+    }else if(content_length>1000000){
+        waitms = 1500;
+    }
+    write_reponse_to_file(sock, "log_postfile", waitms);
 }
 
 /**
