@@ -655,7 +655,8 @@ void Client::upload_file_data(int sock){
  * 函数功能: 将sock中的数据写入 file_name 对应的文件中
  * 函数参数: 无
  * 函数返回值: void
- * 详细描述: sock采用ET触发，持续侦听，直到socket被关闭，说明数据接收完毕
+ * 详细描述: sock采用ET触发，持续侦听，设置超时时间300ms，超时之后关闭socket，说明数据接收完毕(超时时间)
+ *          不能监听EPOLLRDHUP事件来代表response接收完毕(对端关闭socket可能延时很长)
  */ 
 void Client::write_reponse_to_file(int sock, std::string file_name){
     // epoll直到检测到socket被关闭，说明response接收完毕
@@ -663,15 +664,19 @@ void Client::write_reponse_to_file(int sock, std::string file_name){
     logfile.open(file_name, std::ios::out);
     
     /* edge-triggered */
-    add_event(epoll_fd, sock, EPOLLIN | EPOLLET | EPOLLRDHUP );
+    // add_event(epoll_fd, sock, EPOLLIN | EPOLLET | EPOLLRDHUP );
+    add_event(epoll_fd, sock, EPOLLIN | EPOLLET );
+
+    int waitms = 300;
 
     while(1){
-        /* 持续接收数据，直到触发EPOLLRDHUP事件，说明socket被关闭 */
-        if(epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1)<0){
+        /* 持续接收数据，等待超时，代表数据接收完毕 */
+        int res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, waitms);
+        if (res < 0)
+        {
             printf("epoll_wait failed\n");
-        }
-
-        if(events[0].events & EPOLLRDHUP){
+        }else if(res == 0){
+            printf("接收response完毕\n");
             remove_event(epoll_fd, sock);
             close(sock);
             break;
