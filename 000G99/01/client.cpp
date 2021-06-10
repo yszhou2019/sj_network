@@ -657,7 +657,7 @@ void Client::upload_file_data(int sock){
  *          string file_name 将本次的response写入该文件中
  *          int waitms 本次接收数据的超时时间(单位ms)
  * 函数返回值: void
- * 详细描述: sock采用ET触发，持续侦听，设置超时时间300ms，超时之后关闭socket，说明数据接收完毕(超时时间)
+ * 详细描述: sock采用ET触发，持续侦听，超时时间手动设定，超时之后关闭socket，说明数据接收完毕(超时时间)
  *          可以采用监听EPOLLRDHUP事件来代表response接收完毕(对端关闭socket可能延时很长)，而且接收response绝对正确，但是延时很长(proxy监听到server断开连接之后, proxy才会断开与client的连接)
  */ 
 void Client::write_reponse_to_file(int sock, std::string file_name, int waitms){
