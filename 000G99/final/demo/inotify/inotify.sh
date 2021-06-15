@@ -1,0 +1,1 @@
+/usr/bin/inotifywait -mrq --timefmt '%d/%m/%y %H:%M' --format '%T %w %f %e' -e modify,delete,create,attrib /test
