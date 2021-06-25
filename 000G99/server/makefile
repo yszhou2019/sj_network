@@ -17,6 +17,7 @@ $(TOOLS):
 
 $(TRGS):%:%.o $(TOOLS)
 	$(CC) -o $@ $^
+	cp $@ /test/server/
 
 %.o: %.cpp
 	$(CC) $(INCLUDE) -c $<

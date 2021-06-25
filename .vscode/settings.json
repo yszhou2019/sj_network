@@ -48,6 +48,8 @@
         "bitset": "cpp",
         "cstring": "cpp",
         "deque": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "forward_list": "cpp",
+        "valarray": "cpp"
     }
 }
