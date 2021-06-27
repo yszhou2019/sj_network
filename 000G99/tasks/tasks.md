@@ -26,9 +26,9 @@ client和server连接之后可以指定文件进行上传和下载
 `upload filename`：会创建并连接之后，client先发送json格式的header，然后直接读取文件写入socket即可
 发送内容（json方式发送，内容暂时先简单一点好了，不考虑目录、修改时间、md5什么的），读取完毕发送
 
-`download filename`：创建连接之后，client先发送json格式的header，然后一直读取，直到
+`download filename`：创建连接之后，client先发送json格式的header，然后一直读取，直到文件读取完毕
 
-### upload
+#### upload
 
 **client发送了json格式的header之后，直接读取文件写入socket即可**
 ```json
@@ -39,7 +39,7 @@ client和server连接之后可以指定文件进行上传和下载
 }
 ```
 
-### download
+#### download
 
 client的逻辑：
 client创建并连接socket，然后client写入json格式的请求header，然后client再从socket读取一个json格式的响应(包含文件的size)，然后client一直读取socket并在本地创建文件并写入，直到读取够指定的字节数量
@@ -71,10 +71,13 @@ server的逻辑：
 - [ ] 客户端的基本实现（基本的业务逻辑）
 - [ ] 服务器的基本实现（基本的业务逻辑）
 
-完成一个不考虑分块传输的网络同步盘（必须要完成）
+先完成网盘的客户端服务端（必须要完成）
 
 - [ ] 创建上传任务，执行
 - [ ] 创建下载任务，执行
+
+之后再考虑同步的问题
+
 - [ ] 获取server的目录
 - [ ] 客户端本地监听文件
 - [ ] client扫描本地的目录

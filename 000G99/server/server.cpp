@@ -28,6 +28,7 @@
 
 /* utils */
 #include "utils/json.hpp"
+#include "utils/log.hpp"
 
 /* debug */
 #include <iostream>
@@ -212,7 +213,7 @@ public:
         // serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
         // serv_addr.sin_addr.s_addr = inet_addr(serv_ip_str);
 
-        // proxy <-> client
+
         listen_fd = create_server("0.0.0.0", _s_port, true);
         // listen to socket
         int res = listen(listen_fd, listen_Q);
@@ -430,7 +431,12 @@ void Server::upload(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // printf("recv done %d\n", res);
     close(fd);
     // 把剩余读取的数据清空
-    read(sinfo->sock, buffer, 1024);
+    while(1)
+    {
+        read(sinfo->sock, buffer, 1);
+        if(buffer[0] == '#')
+            break;
+    }
     // printf("close done %d\n",res);
 }
 
@@ -457,9 +463,11 @@ void Server::download(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
     /* 向client发送真正的数据文件 */
     sendfile(sinfo->sock, fd, NULL, stat_buf.st_size);
+
+    // TODO 这里有隐患，sendfile()失败怎么办?write()失败怎么办?
+    char buffer = '#';
+    write(sinfo->sock, &buffer, 1);
     close(fd);
-    char buffer[1024];
-    read(sinfo->sock, buffer, 1024);
 }
 
 int main(int argc, char** argv)
