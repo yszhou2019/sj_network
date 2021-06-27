@@ -12,6 +12,36 @@ from api.upload_header import *
 from utils import *
 
 
+def read_config(file_name):
+    """
+    从配置文件中读取连接服务器的ip和port
+    """
+    f = open(file_name, 'r')
+    text = f.read()
+    f.close()
+    j_ = json.loads(text)
+    return j_['host'], j_['port']
+
+
+def get_connect():
+    host_, port_ = read_config('./config.cfg')
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print("try to connect to %s:%s" % (host_, port_))
+        sock.connect((host_, port_))
+    except socket.error:
+        print("Could not make a connection to the server")
+        sys.exit(0)
+    print('connect success!')
+    return sock
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
+
+
 class Client:
     def __init__(self):
         self.init_path = './init/'              # 存储需要存放文件的目录
@@ -28,6 +58,8 @@ class Client:
         self.res_queue = queue.Queue()          # response等待响应队列，从request队列里面get出来再放在res队列
         self.task_queue = queue.Queue()         # 任务队列，存储上传、下载等等用户任务（大任务）
         self.complete_queue = queue.Queue()     # 任务完成队列，完成后从task里面放进来
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)     # 连接server
+        self.per_db_name = ''
 
     # need :
     def handle_login(self):
@@ -93,12 +125,165 @@ class Client:
         if self.complete_queue.not_empty:
             self.complete_queue = queue.Queue()
 
-    # need
     def first_sync(self):
-        print("aa")
+        """
+        函数名称：first_sync
+        函数参数：self
+        函数返回值：无
+        函数功能：1. 进行初次同步，主要任务是下载
+                2. 操作：首先请求getDir，然后处理请求的结果
+        """
+        # 1. 扫描本地所有文件，生成所有文件的upload api
+        # 构造一个map，key:"path/file_name", value:md5，之后与服务端对比时使用
+        map = {}
+        for local_file in cur_dir:
+            upload_header = "uploadFile\n"+ local_file_info_json + '\0'.encode()
+            self.req_queue.put(upload_header)
+            map.insert("{0}/{1}".format(local_file['relative_path'],
+                                local_file['file_name']): local_file['md5'])
+
+
+        # 2. 请求服务端的所有数据，遍历服务端的所有数据
+        # 2.1 发送getdir请求
+        d = {"session": self.user_session}
+        getDir = "getdir\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+        self.sock = get_connect()
+        self.sock.send(getDir)
+        get_dir_res = self.sock.recv(self.BUF_SIZE)
+
+        # 2.2 验证getDir的res
+        get_dir_str = get_dir_res.decode(encoding='gbk')
+        get_dir_head = get_dir_str.split('\n')[0]
+        if get_dir_head != 'getdirRes':
+            print('请求getDir失败！')
+            exit(1)
+
+        # 2.3 验证成功，将str转为json, 得到服务器目录的所有文件的list
+        get_dir_body = get_dir_str.split('\n')[1]
+        get_dir_body = get_dir_body.split('\0')[0]
+        get_dir_list = json.loads(get_dir_body)
+        """
+        {
+            "filename":,
+            "path":,（两个表在服务器进行连接）
+            "size":
+            "md5"
+            "modtime"
+        }
+        """
+
+        """
+        map = {"./txt": "md1", "./txt2": "md2"}
+        """
+        # 2.4 将local_file与get_dir_list进行对比, 遍历服务器的每一个文件remote_file
+        for remote_file in get_dir_list:
+            # 在map中找到key为remote_file['filename']的项
+            remote_md5 = map.get(remote_file['filename'], -1)
+            if remote_md5 == -1 or remote_md5 != remote_file['md5']:
+                # 将download请求放到task队列
+                # 生成task_id，记录
+                download_to_task()
+                # 将带有task_id的download请求放到req队列
+                download_to_req()
+                # 将需要下载的文件信息写入db
+                add_to_db()
 
     def not_first_sync(self):
-        print("aa")
+        # 1. 将本地的所有文件与db进行对比，扫描本地所有文件
+        # 通过db获取本地的数据库所有的内容, 并在内存中维护一个记录db信息的map
+        self.sql_conn.row_factory = dict_factory
+        cur = self.sql_conn.cursor()
+        res = cur.execute('select * from local_file_table')
+        db_file = res.fetchall()  # 同样变成字典样式
+        # 构造一个map，key:"path/file_name", value:(size,mtime,md5)
+        map = {"{0}/{1}".format(local_file['relative_path'],
+                                local_file['file_name']): (local_file['size'],local_file['mtime'],local_file['md5']) for local_file in db_file}
+        """
+        map = {"./txt": (5, 'hhhh-yy-dd', "md1"), "./txt2": (6, 'hhhh-yy-dd', "md2")}
+        """
+
+        # 1.1 开始扫描本地所有文件
+        # 维护一个list或者map记录本地文件的信息（文件路径、文件名）到内存
+        list_or_map = {}    # 记录文件名与对应的md5
+        for local_file in cur_dir:
+            f = map.get(strcat(local_file.path,local_file.fname),-1)
+            if f != -1: # 如果存在，对比size以及mtime，不能对比md5，因为尽量减少计算本地md5的花销
+                if local_file.size != f[0] or local_file.mtime!= f[1]:
+                    # 说明此时同名的文件已经进行了修改，需要重算md5
+                    local_file_md5 = calculate(local_file)
+                    if local_file_md5 != f[2]:
+                        # 说明修改了真正的内容，需要上传
+                        upload_header = "uploadFile\n" + local_file_info_json + '\0'.encode()
+                        self.req_queue.put(upload_header)
+                    # 不管是否修改真正的内容，size和mtime已经不同，所以需要更新
+                    self.sql_conn.execute('update [table] set md5 = % , size = % , mtime = % where path_filename = %' % (local_file_md5, path, filename))
+            # 如果当前扫描的文件在db不存在重名
+            # 计算本地md5
+            local_file_md5 = calculate(local_file)
+            # 增加上传请求
+            upload_header = "uploadFile\n" + local_file_info_json + '\0'.encode()
+            self.req_queue.put(upload_header)
+            # 插入db的path, name, size, mtime, md5
+            self.sql_conn.execute('insert into ...')
+
+        # 1.2 扫描db中的所有记录
+        for item in map:
+            if item.first not in local_map:
+                # 当前db的记录在本地不存在
+                # 检查task队列是否存在对应的上传or下载任务
+                task_list = list(self.task_queue.queue)
+                for task in task_list:
+                    if task.f_path && task.f_name:
+                        # 获得需要删除req的对应的task_id
+                        task_id = task.task_id
+                        # 弹出所有的req_queue到一个list
+                        req_list = get_req_queue_to_list()
+                        # 遍历一遍list，将task_id对应的删除
+                        delete_task_id_in_req_list(req_list, task_id)
+                        # 将删除后的req_list的内容重新put到queue中
+                        for req in req_list:
+                            self.req_queue.put(req)
+                # 告知server删除对应的记录
+                req_delete = 'deleteFile\n' + file_info + '\0'
+                self.req_queue.put(req_delete)
+                # 删除db中的记录
+                self.sql_conn.execute('delete 对应的记录')
+
+        # 1.3 请求服务端的所有数据，遍历服务端的所有数据
+        # 发送getdir请求
+        d = {"session": self.user_session}
+        getDir = "getdir\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+        self.sock = get_connect()
+        self.sock.send(getDir)
+        get_dir_res = self.sock.recv(self.BUF_SIZE)
+
+        # 验证getDir的res
+        get_dir_str = get_dir_res.decode(encoding='gbk')
+        get_dir_head = get_dir_str.split('\n')[0]
+        if get_dir_head != 'getdirRes':
+            print('请求getDir失败！')
+            exit(1)
+
+        # 验证成功，将str转为json, 得到服务器目录的所有文件的list
+        get_dir_body = get_dir_str.split('\n')[1]
+        get_dir_body = get_dir_body.split('\0')[0]
+        get_dir_list = json.loads(get_dir_body)
+        """{
+            "filename":,
+            "path":,（两个表在服务器进行连接）
+            "size":
+            "md5"
+            "modtime"
+        }"""
+
+        # 将与get_dir_list进行对比, 遍历服务器的每一个文件remote_file
+        for remote_file in get_dir_list:
+            # 在map中找到key为remote_file['filename']的项
+            remote_md5 = map.get(remote_file['filename'], -1)
+            if remote_md5 == -1 or remote_md5 != remote_file['md5']:
+                download_to_req()
+                download_to_task()
+                add_to_db()
 
     def read_bind_persistence(self):
         """
@@ -219,9 +404,9 @@ class Client:
         """
         # 2. 判断持久化文件是否存在（持久化文件：1.绑定信息，2.queue信息，3.db信息）
         # 2.2 db信息
-        per_db_name = "{0}/{1}_{2}_db.db".format(self.init_path, str(self.user_id), str(self.bind_path_prefix))
-        if not os.path.exists(per_db_name):
-            self.create_local_file_table(per_db_name)
+        self.per_db_name = "{0}/{1}_{2}_db.db".format(self.init_path, str(self.user_id), str(self.bind_path_prefix))
+        if not os.path.exists(self.per_db_name):
+            self.create_local_file_table(self.per_db_name)
             self.first_sync()
         else:
             # 可能需要fetchall

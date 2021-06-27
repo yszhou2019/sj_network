@@ -2,6 +2,7 @@
 import socket
 import threading
 import sys
+import sqlite3
 import os
 import json
 from api.download_header import *
@@ -125,22 +126,54 @@ def op_download(file_name):
     f = open(op_f_name+'_recv', 'wb')
     f.write(f_content)
 
+class db:
+    def __init__(self):
+        self.conn = 0
+
+    def con(self):
+        self.conn = sqlite3.connect('ab.db')
+
+    def run(self):
+        self.con()
+        a = self.conn.cursor()
+
+
+db = db()
+db.run()
 
 if __name__ == '__main__':
-    session = ''
-    while True:
-        op_str = input('请输入操作：')
-        op_li = op_str.split()
-        op = op_li[0]
+    get_dir_res = """getdirRes\n[{"filename":1,"path":1,"size":1,"md5":1,"modtime":1}]\0""".encode(encoding='gbk')
 
-        if op == 'exit':
-            break
-        elif op == 'upload' and len(op_li) == 2:
-            op_upload(op_li[1])
-        elif op == 'download' and len(op_li) == 2:
-            op_download(op_li[1])
-        else:
-            print('请检查输入的命令以及参数个数...')
+    get_dir_str = get_dir_res.decode(encoding='gbk')
+    print('1',get_dir_str)
+    get_dir_head = get_dir_str.split('\n')[0]
+    print('2',get_dir_head)
+    if get_dir_head != 'getdirRes':
+        print(get_dir_head)
+        print('请求getDir失败！')
+        exit(1)
+
+    # 验证成功，将str转为json
+    get_dir_body = get_dir_str.split('\n')[1]
+    get_dir_body = get_dir_body.split('\0')[0]
+    get_dir_list = json.loads(get_dir_body)
+    for ii in get_dir_list:
+        print(ii['filename'])
+    #
+    # session = ''
+    # while True:
+    #     op_str = input('请输入操作：')
+    #     op_li = op_str.split()
+    #     op = op_li[0]
+    #
+    #     if op == 'exit':
+    #         break
+    #     elif op == 'upload' and len(op_li) == 2:
+    #         op_upload(op_li[1])
+    #     elif op == 'download' and len(op_li) == 2:
+    #         op_download(op_li[1])
+    #     else:
+    #         print('请检查输入的命令以及参数个数...')
 
     # # 读取host和port
     # host, port = read_config('./config.cfg')
