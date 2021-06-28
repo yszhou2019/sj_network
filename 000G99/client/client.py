@@ -45,7 +45,6 @@ def dict_factory(cursor, row):
 class Client:
     def __init__(self):
         self.init_path = './init/'              # 存储需要存放文件的目录
-        self.user_id = 0                        # 用户id
         self.user_name = ''                     # 用户账号
         self.user_pwd = ''                      # 用户密码
         self.user_session = ''                  # 用户session
