@@ -68,16 +68,26 @@ class Client:
         函数参数：self
         函数返回值：bool，登陆成功为True，错误为False，需要输出错误原因
         函数功能：让用户输入账号和密码进行登陆
+        函数步骤：1. 要求用户输入账号和密码
+                2. 将账号和密码形成请求包，通过self.sock发送（阻塞）
+                3. 接收response，解析res，根据error判断失败成功
+                4.  成功则打印消息，更改全局self.user信息以及session信息，return True；
+                    失败则打印消息，return False
+        请求格式：signup\n{"username": "root","password": "root123"}\0
+                （需要str转bytes格式，以API文档为准）
         """
         print('login')
         return True
 
     def handle_logout(self):
         """
-        函数名称：handle_login
+        函数名称：handle_logout
         函数参数：self
-        函数返回值：bool，登陆成功为True，错误为False，需要输出错误原因
-        函数功能：让用户输入账号和密码进行登陆
+        函数返回值：bool，退出成功为True，失败为False，需要输出错误原因
+        函数步骤：1. 形成退出请求包，并通过sock发送
+                2. 接收sock的res，并解析，根据error判断退出成功失败
+                3.  成功，打印信息，返回True
+                    失败，打印信息（失败原因），返回False
         """
         print('login')
         return True
@@ -85,9 +95,15 @@ class Client:
     # need :
     def handle_signup(self):
         """
-        函数名称：run
+        函数名称：handle_signup
         函数参数：self
-        函数功能：描述主函数运行的主要流程
+        函数功能：bool，成功为True，失败为False，需要输出错误原因
+        函数步骤：1. 要求用户输入账号和密码
+                2. 在客户端判断密码的安全性，不安全则重新输入密码（也可以要求重新输入账号）
+                2. 形成注册请求包，并通过sock发送
+                2. 接收sock的res，并解析，判断退出成功失败
+                3.  成功，打印信息，返回True
+                    失败，打印信息（失败原因），返回False
         """
         print('signup')
         return True
