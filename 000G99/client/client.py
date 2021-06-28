@@ -77,7 +77,30 @@ class Client:
                 （需要str转bytes格式，以API文档为准）
         """
         print('login')
-        return True
+        # 大致重要的操作
+        name = input()
+        pwd = input()
+        login_req = "login\n{\"username\":{0},\"password\":{1}}\0".format(name, pwd)
+
+        # 默认sock在调用函数之前连接成功
+        self.sock.send(login_req.encode(encoding='gbk'))
+        res_bytes = self.sock.recv(self.BUF_SIZE)
+        res = res_bytes.decode(encoding='gbk')
+
+        res_head = res.split('\n')[0]
+        res_body = res.split('\n')[1]
+        res_body = res_body[0:-1]   # 去'\0'，也可以用split的方式
+
+        if res_head == 'loginRes':
+            res_body = json.loads(res_body)
+            if res_body['error'] == 1:
+                # 处理成功的操作
+                print()
+                return True
+            else:
+                # 处理失败的操作
+
+        return False
 
     def handle_logout(self):
         """
