@@ -169,22 +169,28 @@ class Client:
 
         # 默认sock在调用函数之前连接成功
         self.sock.send(login_req.encode(encoding='gbk'))
-        res_bytes = self.sock.recv(self.BUF_SIZE)
+        res_bytes = self.sock.recv(1024)
         res = res_bytes.decode(encoding='gbk')
 
         res_head = res.split('\n')[0]
         res_body = res.split('\n')[1]
-        res_body = res_body[0:-1]  # 去'\0'，也可以用split的方式
+        res_body = json.loads(res_body[0:-1])
 
         if res_head == 'loginRes':
             res_body = json.loads(res_body)
-            if res_body['error'] == 1:
-                # 处理成功的操作
-                print()
-                return True
-            else:
+            if res_body['error']:
                 # 处理失败的操作
-                print()
+                print('登录失败！')
+            else:
+                # 处理成功的操作
+                print('登录成功！')
+                self.user_session = res_body['session']
+                self.user_name = name
+                self.user_pwd = pwd
+                return True
+        
+        # 这里统一打印错误结果
+        print(res_body['msg'])
         return False
 
     def handle_logout(self):
@@ -197,8 +203,36 @@ class Client:
                 3.  成功，打印信息，返回True
                     失败，打印信息（失败原因），返回False
         """
-        print('login')
-        return True
+        print('loginout')
+
+        request = "logout\n{\"session\":{0}\0".format(self.user_session)
+
+        # 默认sock在调用函数之前连接成功
+        self.sock.send(request.encode(encoding='gbk'))
+
+        res_bytes = self.sock.recv(1024)
+        res = res_bytes.decode(encoding='gbk')
+
+        res_head = res.split('\n')[0]
+        res_body = res.split('\n')[1]
+        res_body = json.loads(res_body[0:-1])
+
+        if res_head == 'logoutRes':
+            res_body = json.loads(res_body)
+            if res_body['error']:
+                # 处理失败的操作
+                print('登出失败！')
+            else:
+                # 处理成功的操作
+                print('登出成功！')
+                self.user_session = ''
+                self.user_name = ''
+                self.user_pwd = ''
+                return True
+        
+        # 这里统一打印错误结果
+        print(res_body['msg'])
+        return False
 
     def handle_signup(self):
         """
