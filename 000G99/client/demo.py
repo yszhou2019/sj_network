@@ -2,73 +2,13 @@
 import socket
 import threading
 import sys
+import sqlite3
 import os
 import json
+from api.download_header import *
+from api.upload_header import *
+from utils import *
 
-'''
-    res = Response('upload', 'test.txt', '100')
-    print(res)
-    print(res.cls2json())
-
-    res2 = Response.json2cls(res.cls2json())
-    print(res2.cls2json())
-'''
-
-
-class Down_Req_Item:
-    """ 下载请求的单元 """
-    
-    def __init__(self, filename, t_='download'):
-        self.type = t_
-        self.filename = filename
-    
-    def cls2json(self):
-        """ convert Response class to Json(str) """
-        return json.dumps(self.__dict__)
-
-    # 可选构造函数
-    @classmethod
-    def json2cls(cls, j_):
-        d_ = json.loads(j_)
-        return cls(d_['filename'], d_['type'])
-
-
-class Down_Req:
-    """
-    发送文件请求
-    """
-    list_= []
-
-
-class Down_Res:
-    def __init__(self, size):
-        self.size = size
-
-    # 可选构造函数
-    @classmethod
-    def json2cls(cls, j_):
-        d_ = json.loads(j_)
-        return cls(d_['size'])
-
-
-class Up_Req_Item:
-    """ 上传请求的单元 """
-
-    def __init__(self, filename, size, t_='upload'):
-        self.type = t_
-        self.filename = filename
-        self.size = size
-
-    def cls2json(self):
-        """ convert Response class to Json(str) """
-        return json.dumps(self.__dict__)
-
-    # 可选构造函数
-    @classmethod
-    def json2cls(cls, j_):
-        d_ = json.loads(j_)
-        return cls(d_['type'], d_['filename'], d_['size'])
-    
 
 def log_in():
     """ 登陆同步盘 """
@@ -80,62 +20,6 @@ def sign_up():
     print('sign up')
 
 
-
-'''
-函数功能：上传某个文件
-输入参数：文件名（可以是写死成变量，也可以是读取命令行，看你）
-具体逻辑： 1. 根据文件名生成json格式的header，然后写入socket
-          2. 写入文件的数据 
-
-client发送header:          
-{
-    "type": "upload",
-    "filename": "txt",
-    "size": 100 // 字节数量，用以server读取指定长度的字节
-}
-'''
-# def upload():
-# 用之前创建好的socket
-
-# 首先发送json格式的请求体
-
-# 然后发送文件的数据
-
-'''
-
-// client的请求
-{
-    // 指定下载服务器上的某个文件(刚刚上传的一样)
-    "type": "download",
-    "filename": "txt"
-}
-// server的响应
-{
-    "size": 100,
-}
-'''
-
-
-# def download():
-
-
-# def demo_client():
-# step 1 : socket连接指定的server的ip和port
-# connect(ip,port)
-#
-# # step 2: 解析命令行参数
-# if arg[0]=="upload"
-#     upload()
-# elif arg[0] == "download"
-#     download()
-#
-# # step 2: 或者说直接在程序里面写死
-# upload("txt")
-
-# download("txt")
-
-# Wait for incoming data from server
-# .decode is used to turn the message in bytes to a string
 def receive(socket, signal):
     while signal:
         try:
@@ -168,7 +52,6 @@ def create_socket(host, port):
     """
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setblocking(False)
         print("try to connect to %s:%s" % (host, port))
         sock.connect((host, port))
     except socket.error:
@@ -191,22 +74,21 @@ def op_upload(file_name):
     up_header_ = Up_Req_Item(op_f_name, f_size)
     print(up_header_.cls2json())
 
-    # 3. 读取host和port，建立连接
+    # 3. 读取文件，获取文件信息，将header与文件拼接
+    f = open(op_f_name, 'rb')
+    f_content = f.read(f_size)
+    f.close()
+    content = up_header_.cls2json().encode(encoding='gbk') + f_content
+
+    # 4. 读取host和port，建立连接
     host_, port_ = read_config('./config.cfg')
     s = create_socket(host_, port_)
 
-    # 4. 发送header到echo服务器，检查
-    s.send(up_header_.cls2json().encode(encoding='gbk'))
-    res = s.recv(1024)
-    print('response:%' % res)
-
-    f = open(op_f_name, 'rb')
-    f_content = f.read(f_size)
-    print('file content:%s' % f_content)
-    s.send(up_header_.cls2json().encode(encoding='gbk'))
-    res = s.recv(1024)
-    print('response:%' % res)
-    s.send(f_content)
+    print('send content:\n%s' % content)
+    s.send(content)
+    # res = s.recv(1024)
+    # print('return :%s ' % res.decode(encoding='gbk'))
+    # s.send(f_content)
     s.close()
 
 
@@ -230,7 +112,10 @@ def op_download(file_name):
     # 3. 发送down_header并接收down_response
     s.send(down_header.cls2json().encode(encoding='gbk'))
     str_json = s.recv(1024)
-    down_res = Down_Res.json2cls(str_json)
+    str_ = str_json.decode(encoding='gbk')
+    str_ = str_[0:-1]   # 去除尾零'\0'
+
+    down_res = Down_Res.json2cls(str_)
     size = down_res.size
 
     # 4. 从socket接收size大小
@@ -238,25 +123,57 @@ def op_download(file_name):
     s.close()
 
     # 5. 在本地生成文件
-    f = open(op_f_name, 'wb')
+    f = open(op_f_name+'_recv', 'wb')
     f.write(f_content)
-    print('down')
 
+class db:
+    def __init__(self):
+        self.conn = 0
+
+    def con(self):
+        self.conn = sqlite3.connect('ab.db')
+
+    def run(self):
+        self.con()
+        a = self.conn.cursor()
+
+
+db = db()
+db.run()
 
 if __name__ == '__main__':
-    while True:
-        op_str = input('请输入操作：')
-        op_li = op_str.split()
-        op = op_li[0]
+    get_dir_res = """getdirRes\n[{"filename":1,"path":1,"size":1,"md5":1,"modtime":1}]\0""".encode(encoding='gbk')
 
-        if op == 'exit':
-            break
-        elif op == 'upload' and len(op_li) == 2:
-            op_upload(op_li[1])
-        elif op == 'download' and len(op_li) == 2:
-            op_download(op_li[1])
-        else:
-            print('请检查输入的命令以及参数个数...')
+    get_dir_str = get_dir_res.decode(encoding='gbk')
+    print('1',get_dir_str)
+    get_dir_head = get_dir_str.split('\n')[0]
+    print('2',get_dir_head)
+    if get_dir_head != 'getdirRes':
+        print(get_dir_head)
+        print('请求getDir失败！')
+        exit(1)
+
+    # 验证成功，将str转为json
+    get_dir_body = get_dir_str.split('\n')[1]
+    get_dir_body = get_dir_body.split('\0')[0]
+    get_dir_list = json.loads(get_dir_body)
+    for ii in get_dir_list:
+        print(ii['filename'])
+    #
+    # session = ''
+    # while True:
+    #     op_str = input('请输入操作：')
+    #     op_li = op_str.split()
+    #     op = op_li[0]
+    #
+    #     if op == 'exit':
+    #         break
+    #     elif op == 'upload' and len(op_li) == 2:
+    #         op_upload(op_li[1])
+    #     elif op == 'download' and len(op_li) == 2:
+    #         op_download(op_li[1])
+    #     else:
+    #         print('请检查输入的命令以及参数个数...')
 
     # # 读取host和port
     # host, port = read_config('./config.cfg')
