@@ -40,6 +40,9 @@
 /* md5 */
 #include <openssl/md5.h>
 
+/* rand */
+#include <stdlib.h>
+
 /* debug */
 #include <iostream>
 
@@ -265,7 +268,9 @@ public:
             printf("mysql_real_connect failed(%s)\n", mysql_error(db));
         }
 
-        mysql_set_character_set(db, "gbk"); 
+        mysql_set_character_set(db, "gbk");
+
+        srand(time(NULL));
 
     }
     ~Server(){
@@ -359,20 +364,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             printf("客户端请求header%s\n", header.dump().c_str());
 
             // 根据不同的type，执行不同的操作
-            if(type == "upload"){
-                // client -> file -> server
-                printf("进入 upload \n");
-                upload(header, sinfo);
-            }
-            else if(type == "download"){
-                // server -> json_header -> client 
-                // server -> file_data -> client
-                printf("进入 download \n");
-                download(header, sinfo);
-            }
-
-
-            else if(type == "signup"){
+            if(type == "signup"){
                 printf("进入 signup \n");
                 signup(header, sinfo);
             }
