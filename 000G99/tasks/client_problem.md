@@ -77,9 +77,9 @@ client遇到的一些可以商讨探索的问题，或者自问自答的问题，方便整理思路，放在这个文
 
 11. ~~api发生了更改，需要修改~~
 
-12. insert_into_db
+12. ~~insert_into_db~~
 
-13. update_db
+13. ~~update_db~~
 
 写完之后，进行单元测试
 
@@ -142,3 +142,59 @@ id_1:{},
 id_2:{}
 
 }
+
+
+
+
+
+#### 单元测试
+
+1. db
+
+   ~~1.1 db_insert~~
+
+   ~~1.2 db_select~~
+
+   1.3 db_update
+
+   1.4 db_delete
+
+2. gen_req:（生成pack进入req队列，req队列需要将pack拆包并去除数据再发送）
+
+   2.1 gen_req_createDir
+
+   2.2 gen_req_uploadFile
+
+   2.3 gen_req_deleteFile
+
+   2.4 gen_req_download
+
+3. gen_task:
+
+   3.1 gen_task_upload_download
+
+4. handle:(阻塞情况下的c/s交互)
+
+   3.1 handle_getDir
+
+   3.2 handle_bind
+
+   3.3 handle_cancel_bind
+
+5. persistence:
+
+   5.1 bind_persistence
+
+   5.2 queue_persistence
+
+   5.3 db_persistence
+
+6. 测试线程
+7. 测试sender和recver
+
+
+
+?	
+
+
+

@@ -87,6 +87,7 @@ def create_file(prefix, path, file, f_size):
     print(path_list)
 
 
+<<<<<<< Updated upstream
 def isSucure(password):
     upper = 0
     lower = 0
@@ -106,6 +107,21 @@ def isSucure(password):
     else:
         print("密码至少包含数字、大写、小写字母。")
         return False
+        
+=======
+>>>>>>> Stashed changes
+def is_cancel_bind():
+    """
+    函数名称：is_cancel_bind
+    函数参数：self
+    函数功能：让用户选择是否要取消绑定目录
+    """
+    cancel_str = input("请确定是否需要解除绑定？y/Y解除绑定，n/N不接触绑定")
+    if cancel_str == 'y' or cancel_str == 'Y':
+        cancel_str_2 = input("输入y/Y再次确认")
+        if cancel_str_2 == 'y' or cancel_str_2 == 'Y':
+            return True
+    return False
 
 
 class Client:
@@ -315,51 +331,103 @@ class Client:
             self.task_id += 1
         return task_id
 
+    """
+=================        db相关的操作     ===============================
+    """
     def db_select(self):
+        """
+        函数名称：db_select
+        函数参数：null
+        函数功能：将数据库的内容筛选，并转化为一下格式：
+            db_map = {"./txt": {"size":5, "mtime":'hhhh-yy-dd', "md1"}, "./txt2": {"size":5, "mtime":'hhhh-yy-dd', "md2"}}
+        """
         cur = self.sql_conn.cursor()
         res = cur.execute('select * from {0}'.format(self.table_name))
         db_file = res.fetchall()  # 同样变成字典样式
         # 构造一个map，key:"path/file_name", value:(size,mtime,md5)
-        db_map = {local_file['relative_path']: {'size': local_file['size'], 'mtime': local_file['mtime'],
+        db_map = {local_file['path_file_name']: {'size': local_file['size'], 'mtime': local_file['mtime'],
                                                 'md5': local_file['md5']}
                   for local_file in db_file}
         return db_map
 
     def db_init(self):
+        """
+        函数名称：db_init
+        函数参数：null
+        函数功能：进行数据库的连接，并将数据库返回值设置为dict的格式
+        """
         self.sql_conn = sqlite3.connect(self.per_db_name)  # 不存在，直接创建
         self.sql_conn.row_factory = dict_factory
 
     def db_create_local_file_table(self):
+        """
+        函数名称：db_create_local_file_table
+        函数参数：null
+        函数功能：初始化client时，如果当前bind的目录没有db文件，也就是第一次连接目录时，需要创建表
+        """
+        sql_drop = "DROP TABLE IF EXISTS {0};".format(self.table_name)
         sql = """
-        DROP TABLE IF EXISTS {0};
         CREATE TABLE {0} (
           "path_file_name" text NOT NULL,
           "size" integer,
-          "mtime" text,
+          "mtime" integer,
           "md5" text(32),
           PRIMARY KEY ("path_file_name")
         );
         """.format(self.table_name)
-
         cur = self.sql_conn.cursor()
+        cur.execute(sql_drop)
         cur.execute(sql)
 
     def db_insert(self, path_file_name, size, mtime, md5):
+        """
+        函数名称：db_insert
+        函数参数：path_file_name, size, mtime, md5
+        函数功能：像数据库中插入一条数据
+        """
         cur = self.sql_conn.cursor()
-        sql = "INSERT INTO {0} VALUES ({1}, {2}, {3}, {4})".format(self.table_name, path_file_name, size, mtime, md5)
-        cur.execute(sql)
+        try:
+            sql = "INSERT INTO {0} VALUES ('{1}', {2}, {3}, '{4}')".format(self.table_name, path_file_name, size, mtime, md5)
+            print(sql)
+            cur.execute(sql)
+            self.sql_conn.commit()
+        except:
+            self.sql_conn.rollback()
 
     def db_update(self, relative_path_file, size, mtime, md5):
+        """
+        函数名称：db_update
+        函数参数：relative_path_file, size, mtime, md5
+        函数功能：以relative_path_file为主键，对db的内容进行更新
+        """
         cur = self.sql_conn.cursor()
-        sql = "UPDATE {0} SET size = {2}, mtime = {3}, md5 = {4} WHERE path_file_name = {1}".\
+        sql = "UPDATE {0} SET size = {2}, mtime = {3}, md5 = '{4}' WHERE path_file_name = '{1}'".\
             format(self.table_name, relative_path_file, size, mtime, md5)
-        cur.execute(sql)
+        try:
+            cur.execute(sql)
+            self.sql_conn.commit()
+        except:
+            self.sql_conn.rollback()
 
     def db_delete(self, path_file_name):
+        """
+        函数名称：db_delete
+        函数参数：path_file_name
+        函数功能：以path_file_name为主键，将对应的内容删除
+        """
         cur = self.sql_conn.cursor()
-        sql = "DELETE FROM TABLE {0} WHERE path_file_name = {1}".format(self.table_name, path_file_name)
-        cur.execute(sql)
+        sql = "DELETE FROM {0} WHERE path_file_name = '{1}'".format(self.table_name, path_file_name)
+        print(sql)
+        try:
+            cur.execute(sql)
+            self.sql_conn.commit()
+        except:
+            self.sql_conn.rollback()
 
+    """ 
+=================        生成req队列需要的pack的相关操作     ===============================
+    gen的含义为generate，因此命名的函数只涉及产生pack，并将pack放到req_queue里面，不涉及将包发送
+    """
     def gen_req_createDir(self, path, filename):
         que_id = self.get_que_id()
         f_name = "{0}{1}{2}".format(self.bind_path_prefix, path, filename)
@@ -390,41 +458,6 @@ class Client:
         req_deleteFile = "deleteFile\n{0}\0".format(json.dumps(d))
         self.req_queue.put(req_deleteFile)
 
-    def handle_getDir(self):
-        d = {"session": self.user_session}
-        getDir = "getdir\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
-        self.sock.send(getDir)
-        get_dir_res = self.sock.recv(self.GET_DIR_SIZE)
-
-        # 2.2 验证getDir的res
-        get_dir_str = get_dir_res.decode(encoding='gbk')
-        get_dir_head = get_dir_str.split('\n')[0]
-        if get_dir_head == 'getdirRes':
-            # 2.3 验证成功，将str转为json, 得到服务器目录的所有文件的list
-            get_dir_body = get_dir_str.split('\n')[1]
-            get_dir_body = get_dir_body.split('\0')[0]
-            get_dir = json.loads(get_dir_body)
-            if get_dir['error'] == 0:
-                print(get_dir['msg'])
-                return get_dir['dir_list']
-        return []
-
-    def get_chunk_num(self, size):
-        return int(size/self.BUF_SIZE)
-
-    def add_to_task_que(self, task_id, task_type, f_path, f_name, f_size, f_mtime, md5, cnt, total):
-        d = {
-            'task_type': task_type,
-            'f_path': f_path,
-            'f_name': f_name,
-            'f_size': f_size,
-            'f_time': f_mtime,
-            'md5': md5,
-            'cnt': cnt,
-            'total': total
-        }
-        self.task_queue[task_id] = d
-
     def gen_req_download(self, f_path, f_name, f_size, md5, task_id):
         off = 0
         chunk_id = 0
@@ -453,6 +486,12 @@ class Client:
             s -= chunk_size
         return chunk_id
 
+    def gen_req_uploadChunk(self, v_id, t_id, q_id, c_id, off, size, path, filename):
+        d = {'session': self.user_session, 'vfile_id': v_id, 'taskid': t_id, 'queueid': q_id, 'chunkid': c_id,
+             'offset': off, 'chunksize': size, 'path': path, 'filename': filename}
+        req_up = "uploadChunk\n{0}\0".format(json.dumps(d))
+        return req_up
+
     def gen_task_download_upload(self, task_type, f_path, f_name, f_size, f_mtime, md5):
         """
         函数名称：gen_task_download_upload
@@ -477,6 +516,101 @@ class Client:
 
         else:
             print('unknown task type')
+
+    def test_req(self):
+        for item in list(self.req_queue.queue):
+            print(item)
+    """ 
+=================        生成req队列需要的pack的相关操作     ===============================
+    gen的含义为generate，因此命名的函数只涉及产生pack，并将pack放到req_queue里面，不涉及将包发送
+    """
+    def handle_getDir(self):
+        d = {"session": self.user_session}
+        getDir = "getdir\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+        self.sock.send(getDir)
+        get_dir_res = self.sock.recv(self.GET_DIR_SIZE)
+
+        # 2.2 验证getDir的res
+        get_dir_str = get_dir_res.decode(encoding='gbk')
+        get_dir_head = get_dir_str.split('\n')[0]
+        if get_dir_head == 'getdirRes':
+            # 2.3 验证成功，将str转为json, 得到服务器目录的所有文件的list
+            get_dir_body = get_dir_str.split('\n')[1]
+            get_dir_body = get_dir_body.split('\0')[0]
+            get_dir = json.loads(get_dir_body)
+            if get_dir['error'] == 0:
+                print(get_dir['msg'])
+                return get_dir['dir_list']
+        return []
+
+    def handle_bind(self):
+        """
+        函数名称：handle_bind
+        函数参数：self
+        函数功能：处理绑定同步目录，主要步骤包括：
+                1. 确定本地绑定的目录，修改全局变量
+                2. 确定服务器需要绑定的目录
+                3. 更新全局变量
+        """
+        while True: # 直到绑定成功才退出循环
+            input_path = input('确定本地绑定的目录:')
+            while not os.path.exists(input_path):
+                print('选择的目录：%s不存在' % input_path)
+                input_path = input('请再次确定本地绑定的目录:')
+
+            bind_id = input('服务器可选目录：1，2，3\n请选择要绑定的目录：')
+            while int(bind_id) > 3 or int(bind_id) < 1:
+                bind_id = input('服务器目录的范围：1~3，请重新选择：')
+
+            # 形成setbind包，发送并解析res
+            d = {"session": self.user_session, "bindid": bind_id}
+            bind_pack = "setbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+            self.sock.send(bind_pack)
+            bind_res = self.sock.recv(self.BUF_SIZE).decode(encoding='gbk')
+            bind_res_body = bind_res.split('\n')[1].split('\0')[0]
+            bind_res_body = json.loads(bind_res_body)
+
+            if bind_res_body['error'] == 0:
+                self.bind_path_prefix = input_path
+                print('msg:%s' % bind_res_body['msg'])
+                break
+            else:
+                print('绑定失败,bindid:%s\n msg:%s' % (bind_res_body['bindid'], bind_res_body['msg']))
+
+    def handle_cancel_bind(self):
+        """
+        函数名称：handle_cancel_bind
+        函数参数：self
+        函数功能：处理取消绑定的请求，发送取消绑定的包
+        """
+        while True: # 直到绑定成功才退出循环
+            # 形成disbind包，发送并解析res
+            d = {"session": self.user_session}
+            bind_pack = "disbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+            self.sock.send(bind_pack)
+            bind_res = self.sock.recv(self.BUF_SIZE).decode(encoding='gbk')
+            bind_res_body = bind_res.split('\n')[1].split('\0')[0]
+            bind_res_body = json.loads(bind_res_body)
+
+            if bind_res_body['error'] == 0:
+                print('msg:%s' % bind_res_body['msg'])
+                self.bind_path_prefix = ''
+                break
+            else:
+                print('接触绑定失败\n msg:%s' % bind_res_body['msg'])
+
+    def add_to_task_que(self, task_id, task_type, f_path, f_name, f_size, f_mtime, md5, cnt, total):
+        d = {
+            'task_type': task_type,
+            'f_path': f_path,
+            'f_name': f_name,
+            'f_size': f_size,
+            'f_time': f_mtime,
+            'md5': md5,
+            'cnt': cnt,
+            'total': total
+        }
+        self.task_queue[task_id] = d
 
     def first_sync(self):
         """
@@ -551,7 +685,7 @@ class Client:
         # 1. 将本地的所有文件与db进行对比，扫描本地所有文件
         # 通过db获取本地的数据库所有的内容, 并在内存中维护一个记录db信息的map
         db_map = self.db_select()
-        # db_map = {"./txt": (5, 'hhhh-yy-dd', "md1"), "./txt2": (6, 'hhhh-yy-dd', "md2")}
+        # db_map = {"./txt": {"size":5, "mtime":'hhhh-yy-dd', "md1"}, "./txt2": (6, 'hhhh-yy-dd', "md2")}
 
         # 1.1 开始扫描本地所有文件
         # 维护一个list或者map记录本地文件的信息（文件路径、文件名）到内存
@@ -766,75 +900,6 @@ class Client:
         # 2.2 db信息
         per_db_name = "{0}/{1}_{2}_db.db".format(self.init_path, str(self.user_name), str(self.bind_path_prefix))
 
-    def is_cancel_bind(self):
-        """
-        函数名称：is_cancel_bind
-        函数参数：self
-        函数功能：让用户选择是否要取消绑定目录
-        """
-        cancel_str = input("请确定是否需要解除绑定？y/Y解除绑定，n/N不接触绑定")
-        if cancel_str == 'y' or cancel_str == 'Y':
-            cancel_str_2 = input("输入y/Y再次确认")
-            if cancel_str_2 == 'y' or cancel_str_2 == 'Y':
-                return True
-        return False
-
-    def handle_bind(self):
-        """
-        函数名称：handle_bind
-        函数参数：self
-        函数功能：处理绑定同步目录，主要步骤包括：
-                1. 确定本地绑定的目录，修改全局变量
-                2. 确定服务器需要绑定的目录
-                3. 更新全局变量
-        """
-        while True: # 直到绑定成功才退出循环
-            input_path = input('确定本地绑定的目录:')
-            while not os.path.exists(input_path):
-                print('选择的目录：%s不存在' % input_path)
-                input_path = input('请再次确定本地绑定的目录:')
-
-            bind_id = input('服务器可选目录：1，2，3\n请选择要绑定的目录：')
-            while int(bind_id) > 3 or int(bind_id) < 1:
-                bind_id = input('服务器目录的范围：1~3，请重新选择：')
-
-            # 形成setbind包，发送并解析res
-            d = {"session": self.user_session, "bindid": bind_id}
-            bind_pack = "setbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
-            self.sock.send(bind_pack)
-            bind_res = self.sock.recv(self.BUF_SIZE).decode(encoding='gbk')
-            bind_res_body = bind_res.split('\n')[1].split('\0')[0]
-            bind_res_body = json.loads(bind_res_body)
-
-            if bind_res_body['error'] == 0:
-                self.bind_path_prefix = input_path
-                print('msg:%s' % bind_res_body['msg'])
-                break
-            else:
-                print('绑定失败,bindid:%s\n msg:%s' % (bind_res_body['bindid'], bind_res_body['msg']))
-
-    def handle_cancel_bind(self):
-        """
-        函数名称：handle_cancel_bind
-        函数参数：self
-        函数功能：处理取消绑定的请求，发送取消绑定的包
-        """
-        while True: # 直到绑定成功才退出循环
-            # 形成disbind包，发送并解析res
-            d = {"session": self.user_session}
-            bind_pack = "disbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
-            self.sock.send(bind_pack)
-            bind_res = self.sock.recv(self.BUF_SIZE).decode(encoding='gbk')
-            bind_res_body = bind_res.split('\n')[1].split('\0')[0]
-            bind_res_body = json.loads(bind_res_body)
-
-            if bind_res_body['error'] == 0:
-                print('msg:%s' % bind_res_body['msg'])
-                self.bind_path_prefix = ''
-                break
-            else:
-                print('接触绑定失败\n msg:%s' % bind_res_body['msg'])
-
     def req2server(self, head, body):
         new_body = {}
         if head =="uploadFile":
@@ -922,17 +987,11 @@ class Client:
                         self.req2server(head, body)
                         self.res_queue[que_id] = init_req
 
-    def gen_req_uploadChunk(self, v_id, t_id, q_id, c_id, off, size, path, filename):
-        d = {'session': self.user_session, 'vfile_id': v_id, 'taskid': t_id, 'queueid': q_id, 'chunkid': c_id,
-             'offset': off, 'chunksize': size, 'path': path, 'filename': filename}
-        req_up = "uploadChunk\n{0}\0".format(json.dumps(d))
-        return req_up
-
-    def update_task(self, task_id, cnt, total):
+    def task_queue_update_cnt(self, task_id, cnt, total):
         self.task_queue[task_id]['cnt'] = cnt
         self.task_queue[task_id]['total'] = total
 
-    def add_task(self, task_id):
+    def task_queue_add_cnt(self, task_id):
         self.task_queue[task_id]['cnt'] += 1
         if self.task_queue[task_id]['cnt'] >= self.task_queue[task_id]['total']:
             self.complete_queue[task_id] = self.task_queue.pop(task_id)
@@ -972,7 +1031,7 @@ class Client:
 
                 # 文件秒传失败，需要上传文件的详细内容
                 # 需要修改task的cnt和total
-                if head == 'uploadFileRes' and error == 1:
+                if head == 'uploadFileRes' and error == 4:
                     """
                     输入参数：error, msg, queueid, vfile_id
                     """
@@ -1001,7 +1060,7 @@ class Client:
                         chunk_id += 1
 
                     # 形成req的upChunk请求之后，将task_que中的cnt和total修改
-                    self.update_task(taskid, 0, chunk_id + 1)
+                    self.task_queue_update_cnt(taskid, 0, chunk_id + 1)
 
                 else:
                     if error == 0:
@@ -1014,7 +1073,7 @@ class Client:
                         # 将含有task_id的任务对应的task的cnt进行修改
                         if head == 'downloadFileRes':
                             # 对应task_que中的cnt+1
-                            Done = self.add_task(task_id)
+                            Done = self.task_queue_add_cnt(task_id)
 
                             # 解析body，将数据按照off写入本地，如果写完则需要更新mtime
                             con = body_con.split('\0')[1]
@@ -1023,7 +1082,7 @@ class Client:
 
                         elif head == 'uploadFileRes' or head == 'uploadChunkRes':
                             # 对应task_que中的cnt+1
-                            self.add_task(task_id)
+                            self.task_queue_add_cnt(task_id)
 
                     elif error == 1:
                         # 将res_que中对应的que_id的请求再次放入req_que中
@@ -1057,7 +1116,7 @@ class Client:
         # 处理绑定目录
         is_cancel = False
         if self.is_bind:
-            is_cancel = self.is_cancel_bind()
+            is_cancel = is_cancel_bind()
             if is_cancel:
                 self.handle_cancel_bind()
         if (not self.is_bind) or is_cancel:  # 目前未绑定或者绑定之后选择取消绑定
