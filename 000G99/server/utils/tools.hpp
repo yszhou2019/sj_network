@@ -74,7 +74,7 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
     read(sock, &temp, 1);
     if(temp !='\0')
     {
-        print("read chunks without end_zero\n");
+        printf("read chunks without end_zero\n");
     }
     return w_bytes;
 }
@@ -121,11 +121,11 @@ bool create_file_allocate_space(const string& filename, off_t size)
 }
 
 /**
- * 根据md5来判断文件是否存在
+ * 判断文件是否存在
  */ 
-bool if_file_exist(const string& md5)
+bool if_file_exist(const string& filename)
 {
-    return access(md5.c_str(), F_OK) == 0;
+    return access(filename.c_str(), F_OK) == 0;
 }
 
 /**
