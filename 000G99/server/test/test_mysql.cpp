@@ -109,8 +109,43 @@ void test()
 
     // cout << (get_dirid(1,2,"/doc/abc") == -1 ? "right" : "wrong") << endl;
 
-    cout << create_dir_return_dirid(1, 2, "/doc/test") << endl;
-    cout << create_dir_return_dirid(33, 2, "/doc/test") << endl;
+    // cout << create_dir_return_dirid(1, 2, "/doc/test") << endl;
+    // cout << create_dir_return_dirid(33, 2, "/doc/test") << endl;
+
+    // cout << create_vfile(6, "test", 1024, "abcd", 2021, "", 1, 1, 1) << endl;
+    // cout << create_vfile(6, "abcd", 1024, "abcd", 2021, "", 1, 1, 1) << endl;
+    // cout << create_vfile(11, "abcd", 1024, "abcd", 2021, "", 1, 1, 1) << endl;
+
+    // cout << get_file_dir(1, 2) << endl;
+    // cout << get_file_dir(3, 2) << endl;
+
+    // cout << (delete_file(6, "test") == false ? "right" : "wrong") << endl;
+    // cout << (delete_file(6, "abcd") == false ? "right" : "wrong") << endl;
+    // cout << (delete_file(11, "abcd") != false ? "right" : "wrong") << endl;
+
+    // cout << get_vinfo(6, "test") << endl;
+    // cout << get_vinfo(6, "abcd") << endl;
+    // cout << get_vinfo(7, "abcd") << endl;
+
+    // cout << getvfile(6, "test") << endl;
+    // cout << getvfile(6, "abcd") << endl;
+
+    // cout << get_vfile_upload_info(6, "test") << endl;
+    // cout << get_vfile_upload_info(6, "abcd") << endl;
+    // cout << get_vfile_upload_info(7, "abcd") << endl;
+
+    // cout << update_vfile_upload_progress(8, "", 2, 1) << endl;
+    // cout << update_vfile_upload_progress(9, "", 3, 1) << endl;
+    // cout << update_vfile_upload_progress(8, "", 2, 1) << endl;
+
+    // cout << update_vfile_whole(8, "hijklmn", "null", 2048, 20210629, 200, 200, 1) << endl;
+    // cout << update_vfile_whole(9, "hijklmn", "null", 2048, 20210629, 200, 200, 1) << endl;
+    // cout << update_vfile_whole(10, "hijklmn", "null", 2048, 20210629, 200, 200, 1) << endl;
+
+    // cout << get_vid(3, "test") << endl;
+    // cout << get_vid(3, "doc") << endl;
+    // cout << get_vid(6, "test") << endl;
+    // cout << get_vid(6, "abcd") << endl;
 }
 
 int main(int argc, char* argv[])

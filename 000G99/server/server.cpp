@@ -677,11 +677,8 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
  */ 
 void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
-    string session = header["session"].get<string>();
     int bindid = header["bindid"].get<int>();
 
-    // 首先，session生成的时候，应当保证检测到session应当只有1份，
-    // 如果session存在，那么返回true
     json res;
     res["bindid"] = bindid;
 
@@ -742,26 +739,22 @@ void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 void Server::getdir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
 
-    // string session = header["session"].get<string>();
+    json res;
 
-    // int uid = get_uid_by_session(session);
-
-    // json res;
-    // res["bindid"] = bindid;
-
-    // if(uid == -1){
-    //     res["error"] = 2;
-    //     res["msg"] = "获取服务器的文件目录失败，用户session已被销毁，客户端需要重新登录";
-    //     send();
-    //     return;
-    // }
-
-    // res["error"] = 0;
-    // res["msg"] = "获取服务器的文件目录成功";
-    // json file_dir = std::move(get_file_dir(uid));
-    // res["dir_list"] = std::move(file_dir);
-    // send();
-    // return;
+    int uid = checkSession(header, res);
+    if(uid == -1)
+        return;
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
+        return;
+    
+    res["error"] = 0;
+    res["msg"] = "获取服务器的文件目录成功";
+    // json file_dir = std::move(get_file_dir(uid, bindid));
+    // json file_dir = get_file_dir(uid, bindid);
+    res["dir_list"] = get_file_dir(uid, bindid);
+    send();
+    return;
 
 }
 
@@ -939,7 +932,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         return;
 
     // 2. 根据vfile_id获取对应文件的信息5, 判断chunkid对应的chunks是否传输完成
-    json vfile = get_info_by_vfileid(vfile_id);
+    json vfile = get_vfile_upload_info(vfile_id);
 
     json chunks = vfile["chunks"].parse();
 
@@ -980,13 +973,14 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
         // 更新 cnt 字段
         int cnt = vfile["cnt"];
+        cnt++;
         // vfile["cnt"] = cnt + 1;
 
         // 更新 complete 
         int total = vfile["total"];
         // vfile["complete"] = (cnt == total ? 1 : 0);
 
-        update_vfile_upload_progress(vfile_id, chunks.dump(4), cnt + 1, total, (cnt == total ? 1 : 0));
+        update_vfile_upload_progress(vfile_id, chunks.dump(4), cnt, (cnt == total ? 1 : 0));
 
     }
     else
@@ -1004,8 +998,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
  * 函数功能：session验证
  * 返回值：uid
  * 详细描述：
- *    caller 如果检测到uid == -1，那么应当结束hanlder()
- *           uid != -1，权限验证成功
+ * 调用者如果检测到session不存在，那么应当停止运行；否则，代表登录凭证有效，可以进行业务操作
  */ 
 int Server::checkSession(json& header, json& res)
 {
@@ -1021,13 +1014,11 @@ int Server::checkSession(json& header, json& res)
 }
 
 /**
- * 传递进去 res
- * 返回 返回true -> continue
- *      返回false -> return
+ * 函数功能：验证用户是否绑定服务器目录
+ * 输入参数：
  * 返回值：bindid
  * 详细描述：
- *    caller 检测到 bindid == 0 || bindid == -1，那么应当结束handler()
- *           bindid !=0 且 bindid !=1，代表用户目录已经绑定，可以进行业务操作
+ * 调用者检测到用户没有绑定服务器目录，那么应当停止运行；否则，代表用户目录已经绑定，可以进行业务操作
  */ 
 int Server::checkBind(json& header, json& res, int uid)
 {
@@ -1152,9 +1143,6 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     string prefix = header["prefix"];
     string dirname = header["dirname"];
     int queueid = header["queueid"];
-    string session = header["session"];
-
-    int uid = get_uid_by_session(session);
 
     json res;
     res["prefix"] = prefix;
@@ -1205,36 +1193,18 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     string prefix = header["prefix"];
     string dirname = header["dirname"];
     int queueid = header["queueid"];
-    string session = header["session"];
-
-    int uid = get_uid_by_session(session);
 
     json res;
     res["prefix"] = prefix;
     res["dirname"] = dirname;
     res["queueid"] = queueid;
 
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
-
-    int bindid = get_bindid_by_uid(uid);
-    if (bindid == 0)
-    {
-        res["error"] = 3;
-        res["msg"] = "尚未设置绑定目录";
-        send();
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
         return;
-    }
-    else if(bindid == -1){
-        res["error"] = 1;
-        res["msg"] = "用户不存在!";
-        send();
-        return;
-    }
 
     string path = prefix + dirname;
     int dirid = get_dirid(uid, bindid, path);
