@@ -165,7 +165,7 @@ class Client:
         # 大致重要的操作
         name = input('请输入账号：')
         pwd = getpass.getpass('请输入密码：')
-        login_req = "login\n{\"username\":{0},\"password\":{1}}\0".format(name, pwd)
+        login_req = "login\n"+ json.dumps({"username":name,"password":pwd}) +"\0"
 
         # 默认sock在调用函数之前连接成功
         self.sock.send(login_req.encode(encoding='gbk'))
@@ -177,7 +177,6 @@ class Client:
         res_body = json.loads(res_body[0:-1])
 
         if res_head == 'loginRes':
-            res_body = json.loads(res_body)
             if res_body['error']:
                 # 处理失败的操作
                 print('登录失败！')
@@ -205,7 +204,7 @@ class Client:
         """
         print('loginout')
 
-        request = "logout\n{\"session\":{0}\0".format(self.user_session)
+        request = "logout\n"+ json.dumps({"session":self.user_session}) +"\0"
 
         # 默认sock在调用函数之前连接成功
         self.sock.send(request.encode(encoding='gbk'))
@@ -218,7 +217,6 @@ class Client:
         res_body = json.loads(res_body[0:-1])
 
         if res_head == 'logoutRes':
-            res_body = json.loads(res_body)
             if res_body['error']:
                 # 处理失败的操作
                 print('登出失败！')
@@ -253,7 +251,7 @@ class Client:
         if not isSucure(password):
             return False
         
-        tmpStr = "signup\n{\"username\":{0},\"password\":{1}}\0".format(account, password)
+        tmpStr = "signup\n"+ json.dumps({"username":account,"password":password}) +"\0"
         self.sock.send(tmpStr.encode(encoding='gbk'))
 
         result = socket.recv(1024)
