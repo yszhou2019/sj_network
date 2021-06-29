@@ -163,8 +163,8 @@ class Client:
         """
         print('login')
         # 大致重要的操作
-        name = input()
-        pwd = input()
+        name = input('请输入账号：')
+        pwd = getpass.getpass('请输入密码：')
         login_req = "login\n{\"username\":{0},\"password\":{1}}\0".format(name, pwd)
 
         # 默认sock在调用函数之前连接成功
@@ -224,7 +224,7 @@ class Client:
 
         result = socket.recv(1024)
         resultStr = result.decode(encoding='gbk')
-        resultJson = json.loads(resultStr[0:-1].split('\n'))
+        resultJson = json.loads(resultStr[0:-1].split('\n')[1])
         
         print(resultJson['msg'])
         
