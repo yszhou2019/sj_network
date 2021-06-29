@@ -13,14 +13,14 @@ TOOLS = my_etc.o
 all:$(TOOLS) $(TRGS)
 
 $(TOOLS):
-	$(CC) $(INCLUDE) -c $(ETC)
+	$(CC) $(INCLUDE) -c $(ETC) `mysql_config --libs --cflags`
 
 $(TRGS):%:%.o $(TOOLS)
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ `mysql_config --libs --cflags`
 	cp $@ /test/server/
 
 %.o: %.cpp
-	$(CC) $(INCLUDE) -c $<
+	$(CC) $(INCLUDE) -c $< `mysql_config --libs --cflags`
 
 clean:
 	rm -f $(OBJS) $(TRGS) $(TOOLS)
