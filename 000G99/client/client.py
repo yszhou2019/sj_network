@@ -10,6 +10,7 @@ import queue
 import sqlite3
 import threading
 import hashlib
+import getpass
 from api.download_header import *
 from api.upload_header import *
 from utils import *
@@ -84,6 +85,27 @@ def create_file(prefix, path, file, f_size):
         f.write(b'0x00')
 
     print(path_list)
+
+
+def isSucure(password):
+    upper = 0
+    lower = 0
+    digit = 0
+    if len(password) < 8:
+        print("密码至少由8位组成。")
+        return False
+    for char in password:
+        if char.islower():
+            lower += 1
+        if char.isdigit():
+            digit += 1
+        if char.isupper():
+            upper += 1
+    if upper and lower and digit:
+        return True
+    else:
+        print("密码至少包含数字、大写、小写字母。")
+        return False
 
 
 class Client:
@@ -178,21 +200,38 @@ class Client:
         print('login')
         return True
 
-    # need :
     def handle_signup(self):
         """
         函数名称：handle_signup
         函数参数：self
         函数功能：bool，成功为True，失败为False，需要输出错误原因
         函数步骤：1. 要求用户输入账号和密码
-                2. 在客户端判断密码的安全性，不安全则重新输入密码（也可以要求重新输入账号）
-                2. 形成注册请求包，并通过sock发送
-                2. 接收sock的res，并解析，判断退出成功失败
-                3.  成功，打印信息，返回True
-                    失败，打印信息（失败原因），返回False
+                 2. 在客户端判断密码的安全性，不安全则重新输入密码（也可以要求重新输入账号）
+                 2. 形成注册请求包，并通过sock发送
+                 2. 接收sock的res，并解析，判断退出成功失败
+                 3.  成功，打印信息，返回True
+                失败，打印信息（失败原因），返回False
         """
-        print('signup')
-        return True
+        print('signup:')
+        account = input('请输入账号：')
+        password = getpass.getpass('请输入密码：')
+    
+        if not isSucure(password):
+            return False
+        
+        tmpStr = "signup\n{\"username\":{0},\"password\":{1}}\0".format(account, password)
+        self.sock.send(tmpStr.encode(encoding='gbk'))
+
+        result = socket.recv(1024)
+        resultStr = result.decode(encoding='gbk')
+        resultJson = json.loads(resultStr[0:-1].split('\n'))
+        
+        print(resultJson['msg'])
+        
+        if resultJson['error']:
+            return False
+        else:
+            return True
 
     def login_signup(self):
         while True:
