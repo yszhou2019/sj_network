@@ -115,9 +115,9 @@ bool create_file_allocate_space(const string& filename, off_t size)
         fd = open(filename.c_str(), O_WRONLY | O_CREAT);
     }
     u_char buffer[2048];
-    readn(sinfo->sock, buffer, size);
-    writen(fd, buffer, size);
-    
+    // readn(sinfo->sock, buffer, size);
+    // writen(fd, buffer, size);
+
     return create_file_fail;
 }
 
@@ -141,4 +141,77 @@ string generate_session()
 bool if_file_exist(const string& md5)
 {
     return access(md5.c_str(), F_OK) == 0;
+}
+
+void discard_extra(int sock, size_t chunksize)
+{
+    u_char buffer[2048];
+    size_t res = chunksize;
+    while(res != 0)
+    {
+        auto should_read_bytes = (res >= 2048 ? 2048 : res);
+        auto actural_read = read(sock, buffer, should_read_bytes);
+        if(actural_read == -1)
+            actural_read = 0;
+        res -= actural_read;
+    }
+    read(sock, buffer, 1);
+}
+
+
+
+//==========================================
+// deprecated
+
+// 回答，应该采用readn和writen，因为本身在loop前执行过epoll_wait了，而且不同的操作类型是不一样的，不能像http server那样
+int        /* Read "n" bytes from a descriptor */
+readn(int fd, u_char *ptr, int n)
+{
+    int     nleft;
+    int    nread;
+
+    nleft = n;
+    while (nleft > 0)
+    {
+        if ((nread = read(fd, ptr, nleft)) < 0)
+        {
+            if (nleft == n)
+                return(-1);    /* error, return -1 */
+            else
+                break;        /* error, return amount read so far */
+        }
+        else if (nread == 0)
+        {
+            break;            /* EOF */
+        }
+        nleft -= nread;
+        ptr   += nread;
+    }
+    return(n - nleft);             /* return >= 0 */
+}
+
+int        /* Write "n" bytes to a descriptor */
+writen(int fd, const u_char *ptr, int n)
+{
+    int    nleft;
+    int   nwritten;
+
+    nleft = n;
+    while (nleft > 0)
+    {
+        if ((nwritten = write(fd, ptr, nleft)) < 0)
+        {
+            if (nleft == n)
+                return(-1);    /* error, return -1 */
+            else
+                break;        /* error, return amount written so far */
+        }
+        else if (nwritten == 0)
+        {
+            break;            
+        }
+        nleft -= nwritten;
+        ptr   += nwritten;
+    }
+    return(n - nleft);    /* return >= 0 */
 }

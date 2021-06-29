@@ -25,6 +25,8 @@
 #include <string>
 #include <utility>
 
+#include <exception>
+
 
 /* utils */
 #include "utils/json.hpp"
@@ -54,8 +56,6 @@ const int listen_Q = 20;
 const int MAX_EVENT_NUMBER = 100;
 
 const int BUFFER_SIZE = 1024;
-// const int C2S_SIZE = 1024;
-// const int S2C_SIZE = 1024;
 
 
 /* level-triggered */
@@ -93,27 +93,37 @@ struct SOCK_INFO{
     u_int client_ip;
     int buffer_len;             // buffer中的有效字节数量
     u_char buffer[BUFFER_SIZE];
-    // int C2S_len;
-    // int S2C_len;
     // int C2S_total;              // 转发字节数
     // int S2C_total;              // 转发字节数
-    // u_char C2S_buf[C2S_SIZE];
-    // u_char S2C_buf[S2C_SIZE];
     SOCK_INFO(int _sock, u_short _client_port, u_int _client_ip):\
     sock(_sock), client_port(_client_port), client_ip(_client_ip), buffer_len(0) {};
     int recv_header();          // 从指定的socket中读取一个json到缓冲区
     json parse_header(int);        // 从缓冲区中解析出一个json
     int send_header(json&);          // 向指定的socket发送一个json数据
+    string parse_req_type();
 };
 
+string SOCK_INFO::parse_req_type()
+{
+    int i = 0;
+    while (1)
+    {
+        read(sock, buffer + i, 1);
+        if(buffer[i] == '\n')
+        {
+            break;
+        }
+        i++;
+    }
+    buffer[i] = '\0';
+    return string(buffer);
+}
+
 /**
- * 函数功能：从指定的socket中读取数据到缓冲区，直到读取完一个json为止
- * 返回值：一次性读取完毕，返回读取的字节数量
+ * 函数功能：从指定的socket中读取数据到缓冲区，直到读取到\0，表示读取了一个json
+ * 返回值：返回读取的字节数量
  *         其他情况返回-1
- * 详细描述：不断从socket中接收数据，每次读取到字符'{'，计数器cnt++；每次读取到字符'}'，cnt--
- *         直到cnt=0，说明完整地读取了一个json 格式的header，函数运行结束
- * TODO 如果json格式的header超出了2048字节呢???
- * TODO 直接读取的字节数量>header，也就是说，还读取了部分文件数据到buffer
+ * 详细描述：不断从socket中接收数据，每次读取到字符直到\0，说明完整地读取了一个 json 格式的header，函数运行结束
  */ 
 int SOCK_INFO::recv_header()
 {
@@ -122,31 +132,16 @@ int SOCK_INFO::recv_header()
     while (1)
     {
         read(sock, buffer + i, 1);
+        cnt++;
         buffer_len += 1;
-        if(buffer[i]=='{'){
-            cnt++;
+        if(buffer[i]=='\0')
+        {
+            return i;
         }
-        else if(buffer[i]=='}'){
-            cnt--;
-            if(cnt==0)
-                return i;
-        }
-        i++;
-        if(i>BUFFER_SIZE)
+        if(cnt == BUFFER_SIZE)
             break;
+        i++;
     }
-    // buffer_len = read(sock, buffer, sizeof(buffer));
-    // int cnt = 0;
-    // for (int i = 0; i < buffer_len;i++){
-    //     if(buffer[i] == '{')
-    //         cnt++;
-    //     else if (buffer[i] == '}'){
-    //         cnt--;
-    //         if(cnt == 0){
-    //             return i;
-    //         }
-    //     }
-    // }
     // TODO 这里for循环，实际上假设了json的长度小于buffer
     return -1;
 }
@@ -163,21 +158,20 @@ json SOCK_INFO::parse_header(int len)
         printf("buffer: %s\n", buffer);
     }
     printf("parse int %d\n", len);
-    // auto header = json::parse(buffer);
     auto header = json::parse(buffer, buffer + len + 1);
-    // memmove(buffer, buffer + len + 1, buffer_len - len - 1);
-    // buffer_len -= (len + 1);
     buffer_len = 0;
     return header;
 }
 
-// 向socket发送一个json header
-// easy，整理好json之后，直接发送msg即可
+/**
+ * 发送一个json+尾零
+ */ 
 int SOCK_INFO::send_header(json& header)
 {
     string msg = header.dump();
     // TODO 这里应该采用writen
-    write(sock, msg.c_str(), msg.size() + 1);
+    // write有可能没有把数据全部发送
+    write(sock, msg.c_str(), msg.size() + 1); // 这里有 +1 多发送了尾零
     return 1;
 }
 
@@ -202,8 +196,8 @@ private:
     
 
 private:
-    int checkSession(json &, json &);
-    int checkBind(json &, json &, int);
+    int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
+    int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
 
 private:
     void close_release(std::shared_ptr<SOCK_INFO> & sinfo);
@@ -347,6 +341,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             printf("客户端发起请求");
             std::shared_ptr<SOCK_INFO> sinfo = sinfos[sockfd];
 
+            string type = sinfo->parse_req_type();
             // 读取客户端的header
             int len = sinfo->recv_header();
             if(len == -1)
@@ -354,15 +349,16 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 printf("跳过这次请求\n");
                 continue;
             }
-            json header = std::move(sinfo->parse_header(len));
-            printf("客户端请求header%s\n", header.dump().c_str());
-
-            if(!header.contains("type")){
-                printf("跳过这次请求\n");
+            json header;
+            try{
+                header = std::move(sinfo->parse_header(len));
+            }catch(std::exception e){
+                printf("接收到错误的json，跳过\n");
                 continue;
             }
+            printf("客户端请求header%s\n", header.dump().c_str());
+
             // 根据不同的type，执行不同的操作
-            string type = header["type"].get<string>();
             if(type == "upload"){
                 // client -> file -> server
                 printf("进入 upload \n");
@@ -437,64 +433,6 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
 }
 
 
-
-
-// TODO 是该用readn writen呢，还是说应该像http server那样，epoll_wait呢
-// 回答，应该采用readn和writen，因为本身在loop前执行过epoll_wait了，而且不同的操作类型是不一样的，不能像http server那样
-
-int        /* Read "n" bytes from a descriptor */
-readn(int fd, u_char *ptr, int n)
-{
-    int     nleft;
-    int    nread;
-
-    nleft = n;
-    while (nleft > 0)
-    {
-        if ((nread = read(fd, ptr, nleft)) < 0)
-        {
-            if (nleft == n)
-                return(-1);    /* error, return -1 */
-            else
-                break;        /* error, return amount read so far */
-        }
-        else if (nread == 0)
-        {
-            break;            /* EOF */
-        }
-        nleft -= nread;
-        ptr   += nread;
-    }
-    return(n - nleft);             /* return >= 0 */
-}
-
-int        /* Write "n" bytes to a descriptor */
-writen(int fd, const u_char *ptr, int n)
-{
-    int    nleft;
-    int   nwritten;
-
-    nleft = n;
-    while (nleft > 0)
-    {
-        if ((nwritten = write(fd, ptr, nleft)) < 0)
-        {
-            if (nleft == n)
-                return(-1);    /* error, return -1 */
-            else
-                break;        /* error, return amount written so far */
-        }
-        else if (nwritten == 0)
-        {
-            break;            
-        }
-        nleft -= nwritten;
-        ptr   += nwritten;
-    }
-    return(n - nleft);    /* return >= 0 */
-}
-
-
 /**
  * ! deprecated
  * 函数功能：处理[上传文件]事件，用于预先判断能否秒传
@@ -565,7 +503,7 @@ void Server::signup(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(user_exist){
         res["error"] = 1;
         res["msg"] = "用户名已被注册";
-        send();
+        sinfo->send_header(res);
         return;
     }
 
@@ -581,7 +519,7 @@ void Server::signup(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 1;
         res["msg"] = "注册用户失败(数据库添加失败)";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -612,7 +550,7 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if (uid == -1){
         res["error"] = 1;
         res["msg"] = "账号密码不匹配";
-        send();
+        sinfo->send_header(res);
         return;
     }
 
@@ -629,7 +567,7 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["msg"] = "登录成功";
         res["session"] = "";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -663,7 +601,7 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "用户成功退出";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -696,7 +634,7 @@ void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "绑定成功";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -724,7 +662,7 @@ void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "解绑成功";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -753,7 +691,7 @@ void Server::getdir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // json file_dir = std::move(get_file_dir(uid, bindid));
     // json file_dir = get_file_dir(uid, bindid);
     res["dir_list"] = get_file_dir(uid, bindid);
-    send();
+    sinfo->send_header(res);
     return;
 
 }
@@ -798,7 +736,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         {
             res["error"] = 1;
             res["msg"] = "创建目录失败";
-            send();
+            sinfo->send_header(res);
             return;
         }
     }
@@ -858,7 +796,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         if(create_file_fail){
             res["error"] = 1;
             res["msg"] = "服务器创建实际文件失败，可能空间不足";
-            send();
+            sinfo->send_header(res);
             return;
         }
 
@@ -899,7 +837,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
             res["vfile_id"] = vid;
         }
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -940,14 +878,12 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     int chunk_is_done = chunks[chunkid][2];
 
     if(chunk_is_done){
-        // TODO
         // ready chunksize bytes from socket;
-        u_char buffer[2048];
-        readn(sinfo->sock, buffer, chunksize);
+        discard_extra(sinfo->sock, chunksize);
 
         res["error"] = 0;
         res["msg"] = "该chunk已上传过";
-        send();
+        sinfo->send_header(res);
         return;
     }
 
@@ -990,7 +926,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 1;
         res["msg"] = temp;
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -1000,7 +936,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
  * 详细描述：
  * 调用者如果检测到session不存在，那么应当停止运行；否则，代表登录凭证有效，可以进行业务操作
  */ 
-int Server::checkSession(json& header, json& res)
+int Server::checkSession(json& header, json& res, std::shared_ptr<SOCK_INFO> & sinfo)
 {
     string session = header["session"];
     int uid = get_uid_by_session(session);
@@ -1008,7 +944,7 @@ int Server::checkSession(json& header, json& res)
     {
         res["error"] = 2;
         res["msg"] = "用户session已被销毁，客户端需要重新登录";
-        send();
+        sinfo->send_header(res);
     }
     return uid;
 }
@@ -1020,7 +956,7 @@ int Server::checkSession(json& header, json& res)
  * 详细描述：
  * 调用者检测到用户没有绑定服务器目录，那么应当停止运行；否则，代表用户目录已经绑定，可以进行业务操作
  */ 
-int Server::checkBind(json& header, json& res, int uid)
+int Server::checkBind(json& header, json& res, int uid, std::shared_ptr<SOCK_INFO> & sinfo)
 {
     // 服务器目录绑定验证
     bool cont = true;
@@ -1028,12 +964,12 @@ int Server::checkBind(json& header, json& res, int uid)
     if(bindid == -1){
         res["error"] = 3;
         res["msg"] = "用户不存在";
-        send();
+        sinfo->send_header(res);
     }
     else if(bindid == 0){
         res["error"] = 3;
         res["msg"] = "尚未绑定服务器目录";
-        send();
+        sinfo->send_header(res);
     }
     return bindid;
 }
@@ -1076,7 +1012,7 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 1;
         res["msg"] = temp;
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -1111,7 +1047,7 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(dirid == -1){
         res["error"] = 1;
         res["msg"] = "对应的目录不存在";
-        send();
+        sinfo->send_header(res);
         return;
     }
 
@@ -1123,7 +1059,7 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "删除文件成功";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -1161,7 +1097,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(dirid != -1){
         res["error"] = 0;
         res["msg"] = "目录已经创建";
-        send();
+        sinfo->send_header(res);
         return;
     }
 
@@ -1173,7 +1109,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "创建目录成功";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
@@ -1211,7 +1147,7 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(dirid == -1){
         res["error"] = 0;
         res["msg"] = "目录已经删除";
-        send();
+        sinfo->send_header(res);
         return;
     }
 
@@ -1223,7 +1159,7 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "删除目录成功";
     }
-    send();
+    sinfo->send_header(res);
     return;
 }
 
