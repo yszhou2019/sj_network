@@ -202,6 +202,10 @@ private:
     
 
 private:
+    int checkSession(json &, json &);
+    int checkBind(json &, json &, int);
+
+private:
     void close_release(std::shared_ptr<SOCK_INFO> & sinfo);
     void loop_once(epoll_event *events, int number, int listen_fd);
     void download(json &, std::shared_ptr<SOCK_INFO> &);
@@ -581,8 +585,6 @@ void Server::signup(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     return;
 }
 
-
-
 /**
  * 函数功能：处理[登录]事件
  * 输入参数：{username, password}
@@ -680,20 +682,14 @@ void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
     // 首先，session生成的时候，应当保证检测到session应当只有1份，
     // 如果session存在，那么返回true
-    int uid = get_uid_by_session(session);
-
     json res;
     res["bindid"] = bindid;
 
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "绑定服务器目录失败，用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
 
     bool error_occur = set_bind_dir(uid, bindid);
-
 
     if(error_occur){
         res["error"] = 1;
@@ -718,19 +714,10 @@ void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
 
-    string session = header["session"].get<string>();
-
-
-    int uid = get_uid_by_session(session);
-
     json res;
-
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "解绑失败，用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
 
     bool error_occur = disbind_dir(uid);
     if(error_occur){
@@ -796,30 +783,15 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     off_t size = header["size"].get<off_t>();
     int mtime = header["mtime"].get<int>();
 
-
-    // 登录权限验证
-    string session = header["session"];
-
-    int uid = get_uid_by_session(session);
-
     json res;
     res["queueid"] = queueid;
 
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "操作失败，用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
-
-    // 服务器目录绑定验证
-    int bindid = get_bindid_by_uid(uid);
-    if(bindid == -1 || bindid == 0){
-        res["error"] = 3;
-        res["msg"] = "没有绑定服务器目录 或 用户不存在";
-        send();
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
         return;
-    }
 
     int dirid = get_dirid(uid, bindid, path);
     bool create_dir = false;
@@ -956,18 +928,15 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     size_t vfile_id = header["vfile_id"].get<size_t>();
     int chunkid = header["chunkid"];
 
-    string session = header["session"];
-
     json res;
     res["queueid"] = queueid;
-    
-    int uid = get_uid_by_session(session);
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "操作失败，用户session已被销毁，客户端需要重新登录";
-        send();
+
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
+        return;
 
     // 2. 根据vfile_id获取对应文件的信息5, 判断chunkid对应的chunks是否传输完成
     json vfile = get_info_by_vfileid(vfile_id);
@@ -1032,6 +1001,54 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 }
 
 /**
+ * 函数功能：session验证
+ * 返回值：uid
+ * 详细描述：
+ *    caller 如果检测到uid == -1，那么应当结束hanlder()
+ *           uid != -1，权限验证成功
+ */ 
+int Server::checkSession(json& header, json& res)
+{
+    string session = header["session"];
+    int uid = get_uid_by_session(session);
+    if (uid == -1)
+    {
+        res["error"] = 2;
+        res["msg"] = "用户session已被销毁，客户端需要重新登录";
+        send();
+    }
+    return uid;
+}
+
+/**
+ * 传递进去 res
+ * 返回 返回true -> continue
+ *      返回false -> return
+ * 返回值：bindid
+ * 详细描述：
+ *    caller 检测到 bindid == 0 || bindid == -1，那么应当结束handler()
+ *           bindid !=0 且 bindid !=1，代表用户目录已经绑定，可以进行业务操作
+ */ 
+int Server::checkBind(json& header, json& res, int uid)
+{
+    // 服务器目录绑定验证
+    bool cont = true;
+    int bindid = get_bindid_by_uid(uid);
+    if(bindid == -1){
+        res["error"] = 3;
+        res["msg"] = "用户不存在";
+        send();
+    }
+    else if(bindid == 0){
+        res["error"] = 3;
+        res["msg"] = "尚未绑定服务器目录";
+        send();
+    }
+    return bindid;
+}
+
+
+/**
  * 函数功能：处理[下载某个chunk]事件
  * 输入参数：{session, md5, queueid, offset, chunksize }
  * 返回值：
@@ -1043,19 +1060,15 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
     int queueid = header["queueid"];
 
-    string session = header["session"];
-
-    int uid = get_uid_by_session(session);
-
     json res;
     res["queueid"] = queueid;
 
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
+        return;
 
     string md5 = header["md5"];
     string filename = get_filename_by_md5(md5);
@@ -1090,41 +1103,23 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     string filename = header["filename"].get<string>();
     string path = header["path"];
     int queueid = header["queueid"];
-    string session = header["session"];
-
-    int uid = get_uid_by_session(session);
 
     json res;
     res["filename"] = filename;
     res["path"] = path;
     res["queueid"] = queueid;
 
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
-
-    int bindid = get_bindid_by_uid(uid);
-    if (bindid == 0)
-    {
-        res["error"] = 3;
-        res["msg"] = "尚未设置绑定目录";
-        send();
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
         return;
-    }
-    else if(bindid == -1){
-        res["error"] = 1;
-        res["msg"] = "用户不存在!";
-        send();
-        return;
-    }
     
     int dirid = get_dirid(uid, bindid, path);
     if(dirid == -1){
         res["error"] = 1;
-        res["msg"] = "对应的父级目录不存在";
+        res["msg"] = "对应的目录不存在";
         send();
         return;
     }
@@ -1166,27 +1161,12 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     res["dirname"] = dirname;
     res["queueid"] = queueid;
 
-    if(uid == -1){
-        res["error"] = 2;
-        res["msg"] = "用户session已被销毁，客户端需要重新登录";
-        send();
+    int uid = checkSession(header, res);
+    if(uid == -1)
         return;
-    }
-
-    int bindid = get_bindid_by_uid(uid);
-    if (bindid == 0)
-    {
-        res["error"] = 3;
-        res["msg"] = "尚未设置绑定目录";
-        send();
+    int bindid = checkBind(header, res, uid);
+    if(bindid == 0 || bindid == -1)
         return;
-    }
-    else if(bindid == -1){
-        res["error"] = 1;
-        res["msg"] = "用户不存在!";
-        send();
-        return;
-    }
 
     string path = prefix + dirname;
     int dirid = get_dirid(uid, bindid, path);
