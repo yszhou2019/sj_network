@@ -40,6 +40,9 @@
 /* md5 */
 #include <openssl/md5.h>
 
+/* rand */
+#include <stdlib.h>
+
 /* debug */
 #include <iostream>
 
@@ -116,7 +119,7 @@ string SOCK_INFO::parse_req_type()
         i++;
     }
     buffer[i] = '\0';
-    return string(buffer);
+    return string((const char*)buffer);
 }
 
 /**
@@ -265,7 +268,9 @@ public:
             printf("mysql_real_connect failed(%s)\n", mysql_error(db));
         }
 
-        mysql_set_character_set(db, "gbk"); 
+        mysql_set_character_set(db, "gbk");
+
+        srand(time(NULL));
 
     }
     ~Server(){
@@ -359,20 +364,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             printf("客户端请求header%s\n", header.dump().c_str());
 
             // 根据不同的type，执行不同的操作
-            if(type == "upload"){
-                // client -> file -> server
-                printf("进入 upload \n");
-                upload(header, sinfo);
-            }
-            else if(type == "download"){
-                // server -> json_header -> client 
-                // server -> file_data -> client
-                printf("进入 download \n");
-                download(header, sinfo);
-            }
-
-
-            else if(type == "signup"){
+            if(type == "signup"){
                 printf("进入 signup \n");
                 signup(header, sinfo);
             }
@@ -390,7 +382,12 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             }
             else if(type == "disbind"){
                 printf("进入 disbind \n");
-                disbind(header, sinfo);
+                try{
+                    disbind(header, sinfo);
+                }catch(std::exception e)
+                {
+                    printf("except, disbind");
+                }
             }
             else if(type == "getdir"){
                 printf("进入 getdir \n");
@@ -414,7 +411,12 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             }
             else if(type == "createDir"){
                 printf("进入 createDir \n");
-                createDir(header, sinfo);
+                try{
+                    createDir(header, sinfo);
+                }catch(std::exception e)
+                {
+                    printf("except, createDir");
+                }
             }
             else if(type == "deleteDir"){
                 printf("进入 deleteDir \n");
@@ -586,22 +588,23 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
     int uid = get_uid_by_session(session);
 
+    json res;
     if(uid == -1){
         res["error"] = 0;
         res["msg"] = "session已经被销毁";
     }
 
-    json res;
     bool error_occur = destroy_session(session);
     if(error_occur){
         res["error"] = 1;
         res["msg"] = "销毁session失败";
     }
-    else if(updated_rows == 1){
+    else{
         res["error"] = 0;
         res["msg"] = "用户成功退出";
     }
     sinfo->send_header(res);
+    close_release(sinfo);
     return;
 }
 
@@ -620,7 +623,7 @@ void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     json res;
     res["bindid"] = bindid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
 
@@ -650,7 +653,7 @@ void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
 
     json res;
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
 
@@ -679,10 +682,10 @@ void Server::getdir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
     json res;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
     
@@ -717,10 +720,10 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     json res;
     res["queueid"] = queueid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
 
@@ -862,18 +865,17 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     json res;
     res["queueid"] = queueid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
 
     // 2. 根据vfile_id获取对应文件的信息5, 判断chunkid对应的chunks是否传输完成
     json vfile = get_vfile_upload_info(vfile_id);
 
-    json chunks = vfile["chunks"].parse();
-
+    json chunks = json::parse(vfile["chunks"].get<string>());
 
     int chunk_is_done = chunks[chunkid][2];
 
@@ -921,7 +923,8 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     }
     else
     {
-        string temp = "上传失败，实际上传 " + bytes + " 字节，应该上传 " + chunksize + " 字节";
+        string temp = "上传失败，实际上传 " + std::to_string(bytes);
+        temp += " 字节，应该上传 " + std::to_string(chunksize) + " 字节";
         // write failed
         res["error"] = 1;
         res["msg"] = temp;
@@ -990,10 +993,10 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     json res;
     res["queueid"] = queueid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
 
@@ -1008,7 +1011,8 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "下载成功";
     }else{
-        string temp = "下载失败, 实际下载 " + bytes + " 字节，应该下载 " + chunksize + " 字节";
+        string temp = "下载失败, 实际下载 " + std::to_string(bytes);
+        temp += " 字节，应该下载 " + std::to_string(chunksize) + " 字节";
         res["error"] = 1;
         res["msg"] = temp;
     }
@@ -1036,10 +1040,10 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     res["path"] = path;
     res["queueid"] = queueid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
     
@@ -1085,10 +1089,10 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     res["dirname"] = dirname;
     res["queueid"] = queueid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
 
@@ -1135,10 +1139,10 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     res["dirname"] = dirname;
     res["queueid"] = queueid;
 
-    int uid = checkSession(header, res);
+    int uid = checkSession(header, res, sinfo);
     if(uid == -1)
         return;
-    int bindid = checkBind(header, res, uid);
+    int bindid = checkBind(header, res, uid, sinfo);
     if(bindid == 0 || bindid == -1)
         return;
 

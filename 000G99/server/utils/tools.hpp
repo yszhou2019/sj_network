@@ -8,12 +8,22 @@
 /* splice */
 #include <fcntl.h>
 
+/* rand */
+#include <stdlib.h>
+
+/* openssl */
+#include "openssl/sha.h"
+
 
 using string = std::string;
 using json = nlohmann::json;
 typedef unsigned long long ull;
 
 const ull CHUNK_SIZE = 4 * 1024 * 1024;
+const string StorePath = "store/";
+
+//=====================================
+// DONE
 
 int get_chunks_num(ull size)
 {
@@ -60,6 +70,12 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
     close(fd);
     close(pipefd[0]);
     close(pipefd[1]);
+    char temp;
+    read(sock, &temp, 1);
+    if(temp !='\0')
+    {
+        printf("read chunks without end_zero\n");
+    }
     return w_bytes;
 }
 
@@ -84,15 +100,13 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
     close(fd);
     close(pipefd[0]);
     close(pipefd[1]);
+    char temp = '\0';
+    write(sock, &temp, 1);
     return w_bytes;
 }
 
-string get_filename_by_md5(const string& md5)
-{
-    return md5;
-}
-
 /**
+ * 前提，文件不存在
  * 根据文件名，创建指定的文件名
  * 分配指定大小的空间
  * 完成成功，返回 false
@@ -100,48 +114,63 @@ string get_filename_by_md5(const string& md5)
  */ 
 bool create_file_allocate_space(const string& filename, off_t size)
 {
-    // fallocate(fd,mod,off,)
-    bool create_file_fail = false;
-
-    int fd;
-    if (access(filename.c_str(), F_OK) == -1)
-    {
-        if(fd = open(filename.c_str(),O_WRONLY | O_CREAT, S_IRUSR|S_IWUSR)<0){
-            fd = creat(filename.c_str(), O_WRONLY);
-        }
-        fallocate(fd, 0, 0, size);
-    }
-    else {
-        fd = open(filename.c_str(), O_WRONLY | O_CREAT);
-    }
-    u_char buffer[2048];
-    // readn(sinfo->sock, buffer, size);
-    // writen(fd, buffer, size);
-
-    return create_file_fail;
-}
-
-string encode(const string& pwd)
-{
-
+    int fd = open(filename.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    int res = fallocate(fd, 0, 0, size);
+    close(fd);
+    return res != 0 ;
 }
 
 /**
+ * 判断文件是否存在
+ */ 
+bool if_file_exist(const string& filename)
+{
+    return access(filename.c_str(), F_OK) == 0;
+}
+
+/**
+ * 
+ */ 
+string get_filename_by_md5(const string& md5)
+{
+    return StorePath + md5;
+}
+
+/**
+ * 对密码进行加密
+ */ 
+string encode(const string& pwd)
+{
+    unsigned char res[33];
+    SHA256((const unsigned char*)pwd.c_str(), pwd.length(), res); // 调用sha256哈希
+    return string((const char *)res);
+}
+
+/**
+ * DONE
  * 应当保证 session的绝对唯一 
  */
 string generate_session()
 {
-
+    string res;
+    for (int i = 0; i < 32;i++)
+    {
+        int temp = rand() % 3;
+        if(temp == 0)
+        {
+            res += rand() % 26 + 'a';
+        }
+        else if(temp == 1)
+        {
+            res += rand() % 26 + 'A';
+        }
+        else{
+            res += rand() % 10 + '0';
+        }
+    }
+    return res;
 }
 
-
-/**
- * 根据md5来判断文件是否存在
- */ 
-bool if_file_exist(const string& md5)
-{
-    return access(md5.c_str(), F_OK) == 0;
-}
 
 void discard_extra(int sock, size_t chunksize)
 {

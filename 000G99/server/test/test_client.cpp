@@ -15,7 +15,7 @@ using namespace std;
 
 int main(int argc, char** argv)
 {
-    char ip[30] = "47.102.201.228";
+    char ip[30] = "10.60.102.252";
     int port = -1;
     int myport = 4000;
     Choice options[] = {

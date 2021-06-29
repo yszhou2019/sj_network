@@ -316,10 +316,10 @@ json get_vinfo(int dirid, const string& filename)
  * 文件不存在，返回 { vid -1 }
  * 文件存在，返回 { chunks, md5, cnt, total, vid }
  */ 
-json get_vfile_upload_info(int dirid, const string& filename)
+json get_vfile_upload_info(int vid)
 {
     char query[256];
-    snprintf(query, sizeof(query), "select vfile_id, vfile_chunks, vfile_md5, vfile_cnt, vfile_total from virtual_file where vfile_dir_id = %d and vfile_name = '%s';", dirid, filename.c_str());
+    snprintf(query, sizeof(query), "select vfile_id, vfile_chunks, vfile_md5, vfile_cnt, vfile_total from virtual_file where vfile_id = %d;", vid);
 
     if (mysql_query(db, query)) {
         finish_with_error(db);
@@ -338,8 +338,8 @@ json get_vfile_upload_info(int dirid, const string& filename)
     if ((row = mysql_fetch_row(result)) != NULL)
     {
         res["vid"] = atoi(row[0]);
-        res["chunks"] = row[1];
-        res["md5"] = row[2];
+        res["chunks"] = string(row[1]);
+        res["md5"] = string(row[2]);
         res["cnt"] = atoi(row[3]);
         res["total"] = atoi(row[4]);
     }

@@ -58,7 +58,14 @@ void test()
     // info = generate_chunks_info(size, chunk_num);
     // print(info);
 
+    // cout << create_file_allocate_space("store/f1", 100) << endl;
+    // cout << create_file_allocate_space("store/f2", 1024*1024) << endl;
 
+    // cout << encode("abcd123").size() << endl;
+    // cout << encode("root123").size() << endl;
+
+    // cout << generate_session() << endl;
+    // cout << generate_session() << endl;
 }
 
 int main()
