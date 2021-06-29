@@ -11,46 +11,390 @@
 #include <fcntl.h> // set socket non-block
 #include "my_etc.h"
 #include <iostream>
+#include "../utils/json.hpp"
+#include <ctime>
 using namespace std;
+using json = nlohmann::json;
 
-int main(int argc, char** argv)
+char ip[30] = "10.60.102.252";
+// char ip[30] = "47.102.201.228";
+int port = -1;
+int myport = 4000;
+int sock;
+sockaddr_in serv_addr;
+
+int crea_clie(const char serv_ip[], int serv_port, int myport, sockaddr_in& serv_addr, bool isNonBlock)
 {
-    char ip[30] = "10.60.102.252";
-    int port = -1;
-    int myport = 4000;
-    Choice options[] = {
-        {"--port", req_arg, must_appear, is_int, {.int_val=&port}, 0, 65535, 4000},
-        {"--myport", req_arg, must_appear, is_int, {.int_val=&myport}, 0, 65535, 4000},
-    };
-    my_handle_option(options, 1, argc, argv);
-    
-    sockaddr_in serv_addr;
-    int sock = create_client(ip, port, myport, serv_addr, false);
+    // printf("[Connecting to server at %s %d]\n", serv_ip, serv_port);
+    int sock = socket(PF_INET, SOCK_STREAM, 0);
+    if(isNonBlock){
+        set_nonblock(sock);
+    }
+    int on = 1;
+    setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on) );
+    // resources about remote server's addr and port
+    bzero(&serv_addr, sizeof(serv_addr)); 
+    serv_addr.sin_family = AF_INET; 
+    serv_addr.sin_port = htons(serv_port); 
+	serv_addr.sin_addr.s_addr = inet_addr(serv_ip);
+    if(inet_pton(AF_INET, serv_ip, &serv_addr.sin_addr)<=0) { 
+        // perror("[invalid address]");
+        // printf("[errno is %d]\n", errno);
+        exit(EXIT_FAILURE);
+    }else{
+        // printf("[valid address]\n");
+    }
+    // localhost
+    struct sockaddr_in localhost;
+    localhost.sin_family = AF_INET;
+    localhost.sin_port = htons(myport);
+    localhost.sin_addr.s_addr = INADDR_ANY;
+    // bind local port
+    int res = bind(sock, (struct sockaddr *)&localhost, sizeof(localhost));
+    if(res == 0){
+        // printf("[bind success]\n");
+    }else{
+        // perror("[bind failed, check myport]");
+        // printf("[errno is %d]\n", errno);
+        exit(EXIT_FAILURE);
+    }
+    return sock;
+}
+
+void conn()
+{
+    sock = crea_clie(ip, port, myport++, serv_addr, false);
     
     // connect
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) { 
-        printf("[connection failed]\n");
-        return -1; 
+        // printf("[connection failed]\n");
     }else{
-        printf("[connection established]\n");
+        // printf("[connection established]\n");
     }
-    // char buffer[200] = "login\n{\"username\": \"root\",\"password\": \"root123\"}\0";
+}
 
-    char buffer[200] = "createDir\n{\"session\":\"abc\",\"prefix\":\"hello\",\"dirname\":\"/root\",\"queueid\":123}\0";
-    int res = write(sock, buffer, strlen(buffer)+1);
-    memset(buffer, 0, sizeof(buffer));
-    strcpy(buffer, "hello");
-    res = write(sock, buffer, strlen(buffer));
-    cout << "发送字节数量 " << res << endl;
-    // cout << buffer << endl;
-    memset(buffer, 200, 0xff);
-    res = read(sock, buffer, 100);
-    cout << "读取字节" << res << " bytes" << endl;
-    for (int i = 0; i < 10;i++)
-    {
-        printf("%x %x %x %x   %x %x %x %x\n", buffer[i * 8], buffer[i * 8 + 1], buffer[i * 8 + 2], buffer[i * 8 + 3], buffer[i * 8 + 4], buffer[i * 8 + 5], buffer[i * 8 + 6], buffer[i * 8 + 7]);
-    }
+void start(string phase)
+{
+    conn();
+    cout << "====================================" << endl;
+    cout << "测试 " << phase << " 开始" << endl;
+}
 
+void end(string phase)
+{
+    cout << "测试 " << phase << " 结束" << endl;
     close(sock);
+}
+
+// void send_type(string type)
+// {
+//     int res = write(sock, type.c_str(), type.size());
+//     cout << "send type bytes " << res << endl;
+// }
+
+// void send_req(json& req)
+// {
+//     string msg = req.dump(4);
+//     write(sock, msg.c_str(), msg.size() + 1);
+// }
+
+void send_header(string& msg, json& req)
+{
+    string header = msg + req.dump(4);
+    int res = write(sock, header.c_str(), header.size() + 1);
+    cout << "发送字节数量 " << res << endl;
+}
+
+void recv_print()
+{
+    char buffer[200];
+    // 接收res并打印
+    memset(buffer, 0, sizeof(buffer));
+    int bytes = read(sock, buffer, sizeof(buffer));
+    cout << "接收字节数量 " << bytes << endl;
+    for (int i = 0; i < bytes; i++)
+    {
+        cout << buffer[i];
+    }
+    cout << endl;
+}
+
+//=========================================
+// TODO 已经检查，全部正确
+
+// 注册
+void _signup(string phase, string username,string password)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"username", username},
+        {"password", password}};
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+    
+}
+
+// 登录
+void _login(string phase,string username,string password)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"username", username},
+        {"password", password}};
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+// 绑定
+void _setbind(string phase,int bindid,string session)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"bindid", bindid},
+        {"session", session}};
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+} 
+
+// 解绑
+void _disbind(string phase, string session)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", session}};
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+// 退出
+void _logout(string phase,string session)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", session}};
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+//=========================================
+
+typedef unsigned long long ull;
+
+void _uploadFile(string phase, int qid, string fname,string path,string md5,ull size, int mtime)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", sid},
+        {"queueid",qid},
+        {"filename",fname},
+        {"path",path},
+        {"md5",md5},
+        {"size",size},
+        {"mtime",mtime}
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+void _uploadChunk(string phase, string sid, int vid,int qid, int chunkid, ull offset,int chunksize)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", sid},
+        {"vfile_id",vid},
+        {"queueid",qid},
+        {"chunkid",chunkid},
+        {"offset",offset},
+        {"chunksize",chunksize}
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+void _downloadFile(string phase, string sid, string md5, int qid, ull offset, int chunksize)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", sid},
+        {"md5",md5},
+        {"queueid",qid},
+        {"offset",offset},
+        {"chunksize",chunksize}
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+void _deleteFile(string phase, string session,string fname,string path,int qid)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", session},
+        {"filename",fname},
+        {"path",path},
+        {"queueid",qied}
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+void _createDir(string phase, string sid,string prefix,string dirname, int qid)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", sid},
+        {"prefix",prefix},
+        {"dirname",dirname},
+        {"queueid",qid}
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+void _deleteDir(string phase, string sid, string dirname, string prefix, int qid)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", sid},
+        {"dirname",dirname},
+        {"prefix",prefix},
+        {"queueid",qid}
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
+
+
+
+//=========================================
+
+void test()
+{
+    // // 检查username
+    // // 1 用户存在 -> 注册失败
+    // // 2 否则 -> 注册成功
+
+    // _signup("signup", "yszhou2019","yszhou2019");
+    // _signup("signup", "root2019","yszhou2019");
+
+    
+    // // login
+    // // 1 用户不存在 -> 失败
+    // // 2 账号密码不匹配 -> 失败
+    // // 3 成功
+    // _login("login","root2019", "123");
+    // _login("login","root2018", "123");
+    // _login("login","root2019", "yszhou2019");
+
+    // // bind
+    // // 1 session 不存在 -> 失败
+    // // 2 bind失败
+    // // 3 bind成功
+    // _setbind("setbind",2,"WjkR4t94UJWfA47bivjv1TbFVYxA3nr8");
+    // _setbind("setbind",1,"123");
+    // _setbind("setbind",1,"321");
+
+    // // disbind
+    // // session 不存在 -> 重新登录
+    // // 解绑成功
+    // _disbind("disbind", "123");
+    // _disbind("disbind", "321");
+    // _disbind("disbind", "WjkR4t94UJWfA47bivjv1TbFVYxA3nr8");
+    
+    // // logout
+    // // session 不存在 -> 已经退出
+    // // session 存在 -> 销毁
+    // _logout("logout","Y218XE860A1P6I80jWd8qsjq6ih80Vav");
+    // _logout("logout","333");
+    // _logout("logout","123");
+}
+
+int main(int argc, char** argv)
+{
+    srand(time(NULL));
+    Choice options[] = {
+        {"--port", req_arg, must_appear, is_int, {.int_val = &port}, 0, 65535, 4000},
+        {"--myport", req_arg, must_appear, is_int, {.int_val = &myport}, 0, 65535, 4000},
+    };
+    my_handle_option(options, 1, argc, argv);
+    myport = rand() % 1000 + 4000;
+    
+
+
+    test();
+
+
+    // char buffer[200] = "logout\n{\"session\":\"b09e4c9a4c9eb7eb4a5d58c7e78815db\"}\0";
+    // int res = write(sock, buffer, strlen(buffer) + 1);
+    // memset(buffer, 200, 0xff);
+    // res = read(sock, buffer, 100);
+    // cout << "读取字节" << res << " bytes" << endl;
+    // for (int i = 0; i < 10;i++)
+    // {
+    //     printf("%x %x %x %x   %x %x %x %x\n", buffer[i * 8], buffer[i * 8 + 1], buffer[i * 8 + 2], buffer[i * 8 + 3], buffer[i * 8 + 4], buffer[i * 8 + 5], buffer[i * 8 + 6], buffer[i * 8 + 7]);
+    // }
+
+    // strcpy(buffer, "hello");
+    // res = write(sock, buffer, strlen(buffer));
+    // cout << "发送字节数量 " << res << endl;
+    // cout << buffer << endl;
+
+    // close(sock);
     return 0;
 }

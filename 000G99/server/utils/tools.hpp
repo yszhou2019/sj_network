@@ -141,9 +141,17 @@ string get_filename_by_md5(const string& md5)
  */ 
 string encode(const string& pwd)
 {
-    unsigned char res[33];
-    SHA256((const unsigned char*)pwd.c_str(), pwd.length(), res); // 调用sha256哈希
-    return string((const char *)res);
+    unsigned char temp[33];
+    SHA256((const unsigned char*)pwd.c_str(), pwd.length(), temp); // 调用sha256哈希
+    char res[65] = {0};
+    char t[3] = {0};
+    for (int i = 0; i < 32;i++)
+    {
+        sprintf(t, "%02x", temp[i]);
+        strcat(res, t);
+    }
+    res[32] = '\0';
+    return string(res);
 }
 
 /**

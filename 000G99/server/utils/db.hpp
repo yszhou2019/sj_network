@@ -409,7 +409,7 @@ bool write_session(int uid, const string& session)
 {
     char query[256];
     snprintf(query, sizeof(query), "insert into user_session (`session`, `session_uid`) values('%s', %d);", session.c_str(), uid);
-
+    printf("%s\n", query);
     bool error_occur = false;
     if (mysql_query(db, query)) {
         error_occur = true;
