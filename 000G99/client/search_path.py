@@ -1,5 +1,6 @@
 import os
 import time
+import client
 
 
 def search():
@@ -40,3 +41,16 @@ gen_req_deleteFile('/root/path/file')
 
 # print(time.ctime(os.path.getmtime('./search_path.py')))
 # gen_down()
+
+"""    client = client.Client()
+    client.per_db_name = './client.db'
+    client.db_init()
+    res = client.db_select()
+    print(res)
+    client.db_update('jjsxj0', 9099, 999, 'iii')
+    res = client.db_select()
+    print(res)"""
+
+if __name__ == '__main__':
+    client = client.Client()
+
