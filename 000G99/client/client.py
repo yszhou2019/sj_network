@@ -87,6 +87,7 @@ def create_file(prefix, path, file, f_size):
     print(path_list)
 
 
+<<<<<<< Updated upstream
 def isSucure(password):
     upper = 0
     lower = 0
@@ -107,6 +108,8 @@ def isSucure(password):
         print("密码至少包含数字、大写、小写字母。")
         return False
         
+=======
+>>>>>>> Stashed changes
 def is_cancel_bind():
     """
     函数名称：is_cancel_bind
