@@ -49,7 +49,9 @@ client遇到的一些可以商讨探索的问题，或者自问自答的问题，方便整理思路，放在这个文
 
    1.2 扫描本地与服务器并下载
 
-   上传/下载时，先创建task再创建req
+   上传，先创建task，再创建req
+
+   下载，先在本地创建一个空文件，再在db创建一个记录
 
 2. not_first_sync
 
@@ -67,23 +69,31 @@ client遇到的一些可以商讨探索的问题，或者自问自答的问题，方便整理思路，放在这个文
 
 7. handle_signup
 
-8. is_cancel_bind
+8. ~~is_cancel_bind~~
 
-9. handle_bind
+9. ~~handle_bind~~
 
 10. session被销毁后，client执行logout的命令
 
-11. api发生了更改，需要修改
+11. ~~api发生了更改，需要修改~~
+
+12. insert_into_db
+
+13. update_db
+
+写完之后，进行单元测试
 
 
 
 
+
+req_queue格式：需要参考api文档中横线+文字部分
 
 res_queue格式：
 
 res_queue = {
 
-que_id_1 : {uploadFile
+que_id_1 :"uploadFile\n{
 	"session":"32个char",
 	"taskid":,
 	"queueid":,
@@ -92,7 +102,7 @@ que_id_1 : {uploadFile
 	"md5": ,
 	"size": ,
 	"mtime": ,
-},
+}\0",
 
 que_id_2: {uploadFile
 	"session":"32个char",
@@ -116,5 +126,19 @@ que_id_3:{downloadFile\n
 "offset":,
 "chunksize":
 }
+
+que_id: init_req(原来啥样就啥样)
+
+}
+
+
+
+task_queue：
+
+{
+
+id_1:{},
+
+id_2:{}
 
 }
