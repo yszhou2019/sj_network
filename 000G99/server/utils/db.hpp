@@ -6,6 +6,9 @@
 using string = std::string;
 using json = nlohmann::json;
 
+/* debug */
+#include <iostream>
+using std::endl;
 
 extern MYSQL* db;
 
@@ -298,6 +301,7 @@ json get_vinfo(int dirid, const string& filename)
     
     json res;
     res["vid"] = -1;
+    res["md5"] = string("");
 
     if ((result = mysql_store_result(db))==NULL) {
         finish_with_error(db);
@@ -306,7 +310,8 @@ json get_vinfo(int dirid, const string& filename)
     if ((row = mysql_fetch_row(result)) != NULL)
     {
         res["vid"] = atoi(row[0]);
-        res["md5"] = row[1];
+        res["md5"] = string(row[1]);
+        // std::cout << atoi(row[0]) << " " << string(row[1]) << endl;
     }
     return res;
 }

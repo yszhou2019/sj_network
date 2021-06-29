@@ -461,13 +461,13 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 }
             }
             else if(type == "uploadFile"){
-                try{
+                // try{
                 uploadFile(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
-                }
+                // }catch(json::exception e)
+                // {
+                //     std::cout << e.what() << std::endl;
+                //     close_release(sinfos[sockfd]);
+                // }
             }
             else if(type == "uploadChunk"){
                 try{
@@ -804,7 +804,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     string filename = header["filename"];
     string path = header["path"];
     string md5 = header["md5"];
-    off_t size = header["size"].get<off_t>();
+    ll size = header["size"].get<ll>();
     int mtime = header["mtime"].get<int>();
 
     json res;
@@ -838,8 +838,9 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     
     // 根据 md5 判断文件是否存在，是否需要秒传
     string pfile = get_filename_by_md5(md5);
-    bool file_exist = if_file_exist(md5);
-    if(file_exist)
+    bool file_exist = if_file_exist(pfile);
+    // std::cout << "*************" << file_exist << "*************" << endl;
+    if (file_exist)
     {
         // 秒传
         res["error"] = 0;
@@ -847,8 +848,8 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
         // 获取文件信息(vid, md5)
         json vinfo = get_vinfo(dirid, filename);
-        int vid = vinfo["vfile_id"];
-        string md5_old = vinfo["md5"];
+        int vid = vinfo["vid"].get<int>();
+        string md5_old = vinfo["md5"].get<string>();
 
         int total = get_chunks_num(size);
 
@@ -858,12 +859,14 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         // 文件不存在 -> insert ( md5 对应的文件 refcnt++ )-> 秒传
         if(create_dir || vid == -1)
         {
+        // std::cout << "************ create_vfile ***********" << endl;
             vid = create_vfile(dirid, filename, size, md5, mtime, "", total, total, 1);
             error_occur = (vid == -1 ? true : false);
         }
         else if(md5 != md5_old)
         {
         // 文件存在 但是 md5 变化 -> update ( 旧 md5对应的文件 refcnt--, 新md5对应的 refcnt++ )-> 秒传
+        // std::cout << "************ update_vfile_whole ***********" << endl;
             error_occur = update_vfile_whole(vid, md5, "", size, mtime, total, total, 1);
         }
         else
@@ -965,8 +968,11 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // 2. 根据vfile_id获取对应文件的信息5, 判断chunkid对应的chunks是否传输完成
     json vfile = get_vfile_upload_info(vfile_id);
 
-    json chunks = json::parse(vfile["chunks"].get<string>());
-
+    string chunks_string = vfile["chunks"].get<string>();
+    std::vector<std::vector<int>> chunks = json::parse(chunks_string);
+    // std::vector<std::vector<int>> chunks = json::parse(chunks_string).get<std::vector<std::vector<int>>>();
+    // json chunks = json::parse(vfile["chunks"].get<string>());
+    // std::vector<std::vector<int>> chunks = vfile["chunks"].get <std::vector<std::vector<int>>>();
     int chunk_is_done = chunks[chunkid][2];
 
     if(chunk_is_done){
@@ -1008,8 +1014,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         int total = vfile["total"];
         // vfile["complete"] = (cnt == total ? 1 : 0);
 
-        update_vfile_upload_progress(vfile_id, chunks.dump(4), cnt, (cnt == total ? 1 : 0));
-
+        update_vfile_upload_progress(vfile_id, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
     }
     else
     {
@@ -1186,7 +1191,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(bindid == 0 || bindid == -1)
         return;
 
-    string path = prefix + dirname;
+    string path = prefix + "/" + dirname;
     int dirid = get_dirid(uid, bindid, path);
     if(dirid != -1){
         res["error"] = 0;

@@ -18,6 +18,7 @@
 using string = std::string;
 using json = nlohmann::json;
 typedef unsigned long long ull;
+typedef long long ll;
 
 const ull CHUNK_SIZE = 4 * 1024 * 1024;
 const string StorePath = "store/";
@@ -34,7 +35,7 @@ json generate_chunks_info(ull size, int chunk_num)
 {
     json res;
     json temp;
-    json total;
+    // json total;
     for (int i = 0; i < chunk_num; i++)
     {
         ull chunk_bytes = size >= CHUNK_SIZE ? CHUNK_SIZE : size;
@@ -42,10 +43,10 @@ json generate_chunks_info(ull size, int chunk_num)
         temp.push_back(i * CHUNK_SIZE);
         temp.push_back(chunk_bytes);
         temp.push_back(0);
-        total.push_back(temp);
+        res.push_back(temp);
         size -= chunk_bytes;
     }
-    res["chunks"] = total;
+    // res["chunks"] = total;
     return res;
 }
 

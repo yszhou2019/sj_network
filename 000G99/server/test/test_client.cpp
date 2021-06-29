@@ -16,8 +16,8 @@
 using namespace std;
 using json = nlohmann::json;
 
-char ip[30] = "10.60.102.252";
-// char ip[30] = "47.102.201.228";
+// char ip[30] = "10.60.102.252";
+char ip[30] = "47.102.201.228";
 int port = -1;
 int myport = 4000;
 int sock;
@@ -100,9 +100,25 @@ void end(string phase)
 
 void send_header(string& msg, json& req)
 {
+    char buffer[2048];
     string header = msg + req.dump(4);
     int res = write(sock, header.c_str(), header.size() + 1);
     cout << "发送字节数量 " << res << endl;
+
+    // char buffer[2048];
+    // string header = msg + req.dump(4);
+    // sprintf(buffer, "%s", header.c_str());
+    // int i;
+    // for (i = 0; i < header.size() + 1; i++)
+    //     buffer[i] = header.c_str()[i];
+    // for (int k = 0; k < 1025;k++)
+    //     buffer[i + k] = 'A';
+    // buffer[i + 1024] = 'B';
+    // buffer[i + 1025] = '\0';
+
+    // int res = write(sock, buffer, i+1026);
+    // // int res = write(sock, header.c_str(), header.size() + 1);
+    // cout << "发送字节数量 " << res << endl;
 }
 
 void recv_print()
@@ -301,7 +317,7 @@ void _createDir(string phase, string sid,string prefix,string dirname, int qid)
     end(phase);
 }
 
-void _deleteDir(string phase, string sid, string dirname, string prefix, int qid)
+void _deleteDir(string phase, string sid, string prefix, string dirname, int qid)
 {
     start(phase);
     string msg = phase + '\n';
@@ -363,7 +379,61 @@ void test()
     // _logout("logout","Y218XE860A1P6I80jWd8qsjq6ih80Vav");
     // _logout("logout","333");
     // _logout("logout","123");
+
+    // // createDir
+    // // 1 session 不存在 -> 重新登录
+    // // 2 没有绑定 -> 绑定
+    // // 3 创建目录成功
+    // _createDir("createDir", "321", "/root", "doc", 100);
+    // _createDir("createDir", "123", "/root", "doc", 100);
+    // _createDir("createDir", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "/root", "doc", 100);
+    // _createDir("createDir", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "/test/here", "doc", 100);
+
+
+    // // deleteDir
+    // // 1 session 不存在 -> 重新登录
+    // // 2 没有绑定 -> 绑定
+    // // 3 删除目录成功
+    // _deleteDir("deleteDir", "321", "/root", "doc", 100);
+    // _deleteDir("deleteDir", "123", "/root", "doc", 100);
+    // _deleteDir("deleteDir", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "/root", "doc", 100);
+    // _deleteDir("deleteDir", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "/test/here", "doc", 100);
+
+    // // uploadFile
+    // // 1 session 不存在 -> 重新登录 done
+    // // 2 没有绑定 -> 绑定 done
+    // // 3 md5对应的文件存在 -> 秒传 done
+    // //      
+    // // 4 md5对应的文件不存在 -> 
+    // _uploadFile("uploadFile", "dcba", 100, "test.doc", "/root", "abcd123", 100, 2021);
+    // _uploadFile("uploadFile", "123", 100, "test.doc", "/root", "abcd123", 100, 2021);
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/root123", "233", 100, 8*1024*1024+1);
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/root123", "666", 8*1024*1024+1, 100);
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "tt.doc", "/root123", "777", 1025, 100);
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/root", "321dcba", 8*1024*1024+1, 2021);
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/test/here", "abcd123", 100, 2021);
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/test/here", "321dcba", 8*1024*1024+1, 2021);
+
+    // // deleteFile
+    // // 1 session 不存在 -> 重新登录 done
+    // // 2 没有绑定 -> 绑定 done
+    // // 3 删除成功
+    // _deleteFile("deleteFile", "666", "test.doc", "/root123", 100);
+    // _deleteFile("deleteFile", "123", "test.doc", "/root123", 100);
+    // _deleteFile("deleteFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "test.doc", "/root123", 100);
+
+    // // uploadChunk
+    // // 1 session 不存在 -> 重新登录 done
+    // // 2 没有绑定 -> 绑定 done
+    // // 3 删除成功
+    // _uploadChunk("uploadChunk", "666", 15, 100, 0, 0, 4 * 1024 * 1024);
+    // _uploadChunk("uploadChunk", "123", 15, 100, 0, 0, 4 * 1024 * 1024);
+    // _uploadChunk("uploadChunk", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 15, 100, 0, 0, 1025);
+
 }
+
+// _login("login","root2019", "yszhou2019");
+// _setbind("setbind",2,"3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU");
 
 int main(int argc, char** argv)
 {
