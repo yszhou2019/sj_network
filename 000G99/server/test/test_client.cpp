@@ -205,7 +205,7 @@ void _logout(string phase,string session)
 
 typedef unsigned long long ull;
 
-void _uploadFile(string phase, int qid, string fname,string path,string md5,ull size, int mtime)
+void _uploadFile(string phase, string sid, int qid, string fname,string path,string md5,ull size, int mtime)
 {
     start(phase);
     string msg = phase + '\n';
@@ -273,7 +273,7 @@ void _deleteFile(string phase, string session,string fname,string path,int qid)
         {"session", session},
         {"filename",fname},
         {"path",path},
-        {"queueid",qied}
+        {"queueid",qid}
         };
 
     send_header(msg, req);
