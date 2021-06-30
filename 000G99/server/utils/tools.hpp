@@ -119,6 +119,7 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
     int fd = open(filename.c_str(), O_WRONLY, 766);
 
     ssize_t cnt = 0;
+    size_t size = chunksize;
 
     while(cnt != chunksize)
     {
@@ -133,8 +134,8 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
             return 0;
         }
 
-        ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
-        ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE );
+        ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
+        ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, size, SPLICE_F_MORE | SPLICE_F_MOVE );
         printf("read %ld bytes from sock, write %ld bytes to file\n", r_bytes, w_bytes);
 
         if(w_bytes == 0)
@@ -143,7 +144,7 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
             return -1;
         cnt += w_bytes;
         offset += w_bytes;
-        chunksize -= w_bytes;
+        size -= w_bytes;
     }
 
     close(fd);
@@ -172,6 +173,7 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
     int fd = open(filename.c_str(), O_RDONLY, 766);
 
     ssize_t cnt = 0;
+    size_t size = chunksize;
 
     while(cnt != chunksize)
     {
@@ -185,8 +187,8 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
             return 0;
         }
         
-        ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
-        ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
+        ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
+        ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
 
         printf("read %ld from file, write %ld bytes to sock\n", r_bytes, w_bytes);
         if(w_bytes == 0)
@@ -195,7 +197,7 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
             return -1;
         cnt += w_bytes;
         offset += w_bytes;
-        chunksize -= w_bytes;
+        size -= w_bytes;
     }
 
 

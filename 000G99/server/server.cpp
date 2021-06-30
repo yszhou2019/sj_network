@@ -108,10 +108,59 @@ struct SOCK_INFO{
     json parse_header(int);        // 从缓冲区中解析出一个json
     int send_header(string, json&);          // 向指定的socket发送一个json数据
     string parse_req_type();
+    ssize_t sendn(const char*, ssize_t);
+    ssize_t recvn(char*, ssize_t);
 };
 
-//  *         断开连接返回-2
+ssize_t SOCK_INFO::sendn(const char* buf, ssize_t len)
+{
+    char *_buf = (char*)buf;
+    ssize_t cnt = 0;
+    while(cnt != len)
+    {
+        bool ready = sock_ready_to_write(sock);
+        if(!ready)
+        {
+            // 超出等待时间
+            return 0;
+        }
+        ssize_t w_bytes = write(sock, _buf, len);
+        if(w_bytes == 0)
+            break;
+        if(w_bytes == -1)
+            return -1;
+        cnt += w_bytes;
+        _buf += w_bytes;
+        len -= w_bytes;
+    }
+    return cnt;
+}
 
+ssize_t SOCK_INFO::recvn(char* buffer, ssize_t len)
+{
+    ssize_t cnt = 0;
+    while(cnt != len)
+    {
+        bool ready = sock_ready_to_read(sock);
+        if(!ready)
+        {
+            // 超出等待时间
+            return 0;
+        }
+        ssize_t r_bytes = read(sock, buffer, len);
+        if(r_bytes == 0)
+            break;
+        if(r_bytes == -1)
+            return -1;
+        cnt += r_bytes;
+        buffer += r_bytes;
+        len -= r_bytes;
+    }
+    return cnt;
+}
+
+
+//  *         断开连接返回-2
 /**
  * 解析请求类型
  * 首先读取1字节，如果读取=0，说明对端关闭socket，那么返回"close"
