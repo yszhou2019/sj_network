@@ -84,7 +84,7 @@ bool sock_ready_to_write(int sock)
     FD_ZERO(&wfds);
     FD_SET(sock, &wfds);
     int res = select(sock + 1, NULL, &wfds, NULL, &tv);
-    if(FD_ISSET(sock, NULL))
+    if(FD_ISSET(sock, &wfds))
     {
         return true;
     }
