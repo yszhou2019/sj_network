@@ -232,6 +232,24 @@ test：检测简单的通信
 
 test：检测逻辑问题，
 
+上传文件：
+
+0.md5存在
+
+![image-20210701052148220](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210701052148220.png)
+
+1.md5不存在
+
+![image-20210701052329135](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210701052329135.png)
+
+
+
+2.测试下载
+
+![image-20210701055709984](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210701055709984.png)
+
+![image-20210701055739885](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210701055739885.png)
+
 
 
 sender和recver不能同时启动的原因：

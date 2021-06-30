@@ -95,9 +95,12 @@ def path_translate(input_path):
 
 
 def create_path(prefix):
-    cur_path = prefix
-    if not os.path.exists(cur_path):
-        os.makedirs(cur_path)
+    p_list = prefix.split('/')[1:-1]
+    cur_path = '/'
+    for p in p_list:
+        cur_path += p + '/'
+        if not os.path.exists(cur_path):
+            os.makedirs(cur_path)
 
 
 def create_file(prefix, path, file, f_size):
@@ -201,6 +204,82 @@ def read_from_sock(sock, data, n):
         left -= nread
         ptr += nread
     return n-left
+
+
+def sock_ready_to_write(sock):
+    rs, ws, es = select.select([], [sock], [], 1.0)
+    if sock in ws:
+        return True
+    return False
+
+
+def sock_ready_to_read(sock):
+    rs, ws, es = select.select([sock], [], [], 1.0)
+    if sock in rs:
+        return True
+    return False
+
+
+def file2sock(sock, file, off, chunksize):
+    # print('..exec file2sock ...')
+    # print('sock', sock, 'file', file, 'off', off, 'chunksize', chunksize)
+    cnt = 0
+    size = chunksize
+    # f = open(file, 'r')
+    while cnt != chunksize:
+        ready = sock_ready_to_write(sock)
+        if not ready:
+            return 0
+
+        # w_bytes = splice(f.fileno(), sock.fileno(), offset=off, nbytes=size)
+        file.seek(off)
+        data = file.read(size)
+        w_bytes = sock.send(data)
+        print(data)
+
+        if w_bytes == 0:
+            break
+        if w_bytes == -1:
+            return -1
+        cnt += w_bytes
+        off += w_bytes
+        size -= w_bytes
+
+    sock.send(b'\0')
+    return 1
+
+
+def sock2file(sock, file, off, chunksize):
+    """
+    调用结束记得加尾0
+    """
+    cnt = 0
+    size = chunksize
+    # r_pipe, w_pipe = os.pipe()
+    while cnt != chunksize:
+        ready = sock_ready_to_read(sock)
+        if not ready:
+            return 0
+
+        # r_bytes = splice(sock.fileno(), r_pipe, offset=off, nbytes=size)
+        # w_bytes = splice(w_pipe, file.fileno(), offset=off, nbytes=size)
+        # print('read {0} bytes from sock, and write {1} bytes to file'.format(r_bytes, w_bytes))
+        data = sock.recv(size)
+        file.seek(off)
+        w_bytes = file.write(data)
+        # print(data, size, w_bytes)
+        if w_bytes == 0:
+            break
+        if w_bytes == -1:
+            return -1
+        cnt += w_bytes
+        off += w_bytes
+        size -= w_bytes
+
+    ch = sock.recv(1)
+    # while ch != b'\0':
+    #     ch = sock.recv(1)
+    return 1
 
 
 class Client:
@@ -363,13 +442,13 @@ class Client:
             'password': password
         }
         tmpStr = "signup\n{0}\0".format(json.dumps(d))
-        print('test', tmpStr)
-        tmpStr.encode(encoding='gbk')
+        print('test [signup_pack]', tmpStr)
+        tmpStr = tmpStr.encode(encoding='gbk')
         # self.sock.send(tmpStr.encode(encoding='gbk'))
         write2sock(self.sock, tmpStr, len(tmpStr))
 
         result = self.recv_pack()
-        print('test', result)
+        print('test [sign_up_res]', result)
         resultStr = result.decode(encoding='gbk')
         resultJson = json.loads(resultStr[0:-1].split('\n')[1])
 
@@ -614,6 +693,8 @@ class Client:
         """
         task_id = self.get_task_id()
         f_path = add_path_bound(f_path)
+        if not os.path.exists(self.bind_path_prefix[:-1] + f_path):
+            create_path(self.bind_path_prefix[:-1] + f_path)
 
         if f_size > 4*1024*1024*1024:
             print('can not download or upload file bigger than 4GB')
@@ -632,12 +713,12 @@ class Client:
             print('unknown task type')
 
     def test_req(self):
-        print('test req:')
+        print('\ntest req_queue:\n')
         for item in list(self.req_queue.queue):
             print(item.encode())
 
     def test_task(self):
-        print('test task:')
+        print('test task_queue:\n')
         for key,value in self.task_queue.items():
             print('{0}:{1}'.format(key, value))
     """ 
@@ -650,7 +731,7 @@ class Client:
         # self.sock.send(getDir)
         write2sock(self.sock, getDir, len(getDir))
         get_dir_res = self.recv_pack()
-        print('test')
+        print('test [get_dir_res]')
         print(get_dir_res)
 
         # 2.2 验证getDir的res
@@ -662,8 +743,8 @@ class Client:
             get_dir_body = get_dir_body.split('\0')[0]
             get_dir = json.loads(get_dir_body)
             if get_dir['error'] == 0:
-                print('test', get_dir_res)
-                print('test', get_dir['dir_list'])
+                print('test [get_dir_res]', get_dir_res)
+                print('test [get_dir_list]', get_dir['dir_list'])
                 print(get_dir['msg'])
                 return get_dir['dir_list']
         return []
@@ -690,11 +771,11 @@ class Client:
             # 形成setbind包，发送并解析res
             d = {"session": self.user_session, "bindid": int(bind_id)}
             bind_pack = "setbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
-            print('test', bind_pack)
+            print('test [bind_pack]', bind_pack)
             # self.sock.send(bind_pack)
             write2sock(self.sock, bind_pack, len(bind_pack))
             bind_res = self.recv_pack().decode(encoding='gbk')
-            print('test', bind_res)
+            print('test [bind_res]', bind_res)
 
             bind_res_body = bind_res.split('\n')[1].split('\0')[0]
             bind_res_body = json.loads(bind_res_body)
@@ -720,11 +801,11 @@ class Client:
             # self.sock.send(bind_pack)
             write2sock(self.sock, bind_pack, len(bind_pack))
             bind_res = self.recv_pack().decode(encoding='gbk')
-            print('test', bind_res)
+            print('test [bind_res]', bind_res)
 
             bind_res_body = bind_res.split('\n')[1].split('\0')[0]
             bind_res_body = json.loads(bind_res_body)
-            print('test', bind_res_body)
+            print('test [bind_res_body]', bind_res_body)
 
             if bind_res_body['error'] == 0:
                 print('msg:%s' % bind_res_body['msg'])
@@ -764,10 +845,10 @@ class Client:
             sub_path = path[len(s_path):] + '/'
             for file in files:
                 # 计算md5
-                print('test', path, file)
-                print('os_path', os.path.join(path, file))
+                # print('test', path, file)
+                # print('os_path', os.path.join(path, file))
                 relative_path = sub_path + file
-                print('relative_path', relative_path)
+                # print('relative_path', relative_path)
                 real_path = os.path.join(path, file)
                 md5 = get_file_md5(real_path)
                 size = os.path.getsize(real_path)
@@ -1077,6 +1158,7 @@ class Client:
             """
             new_body['session'] = body['session']
             new_body['md5'] = body['md5']
+            new_body['queueid'] = body['queueid']
             new_body['offset'] = body['offset']
             new_body['chunksize'] = body['chunksize']
 
@@ -1165,13 +1247,13 @@ class Client:
                             self.sock.send(b'\0')
 
                             self.res_queue[que_id] = init_req
-                            print('test', self.res_queue)
+                            print('\n收到一份res,[res_queue]', self.res_queue)
                         else:
                             print('<sender>:打开文件失败, {}不存在'.format(file_path))
                     else:
                         self.req2server(head, body)
                         self.res_queue[que_id] = init_req
-                        print('test_res_queue', self.res_queue)
+                        print('\n收到一份res,[res_queue]', self.res_queue)
 
     def task_queue_update_cnt(self, task_id, cnt, total):
         self.task_queue[task_id]['cnt'] = cnt
@@ -1181,7 +1263,7 @@ class Client:
         self.task_queue[task_id]['cnt'] += 1
         if self.task_queue[task_id]['cnt'] >= self.task_queue[task_id]['total']:
             self.complete_queue[task_id] = self.task_queue.pop(task_id)
-            print('上传完成!')
+            print('\ntask完成!\n')
             self.test_task()
             print(self.complete_queue)
             return True
@@ -1190,14 +1272,14 @@ class Client:
     def manage_api_download(self, Done, task_id, path, filename, offset, chunksize, file_content):
         file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], path, filename)
         try:
-            f = open(file_path, 'w')
+            f = open(file_path, 'ab+')
             f.seek(offset)
             f.write(file_content[0:chunksize-1])
         except IOError:
             print('<download>写入文件失败！')
 
         if Done:
-            mtime = self.task_queue[task_id]['mtime']
+            mtime = self.complete_queue[task_id]['f_mtime']
             os.utime(file_path, (mtime, mtime))
 
     def recv_pack(self):
@@ -1207,17 +1289,17 @@ class Client:
             res += ch
             # print(ch)
             ch = self.sock.recv(1)
-        res += b'\0'
+        res += ch
         return res
 
     # receiver进程
     def receiver(self):
-        print('recver begin')
+        print('\n... recver begin ...')
         while self.is_die == 0:
             rs, ws, es = select.select([self.sock], [], [])
             if self.sock in rs:
                 init_res = self.recv_pack().decode(encoding='gbk')
-                print('test', init_res)
+                print('\nrecver收到原始数据', init_res.encode())
 
                 # 解析接收数据的res头以及res_body并转化为json的dict格式
                 head = init_res.split('\n')[0]
@@ -1264,7 +1346,7 @@ class Client:
                         s -= chunk_size
 
                     # 形成req的upChunk请求之后，将task_que中的cnt和total修改
-                    self.task_queue_update_cnt(taskid, 0, chunk_id + 1)
+                    self.task_queue_update_cnt(taskid, 0, chunk_id)
                     self.test_req()
                     self.test_task()
 
@@ -1282,9 +1364,27 @@ class Client:
                             Done = self.task_queue_add_cnt(task_id)
 
                             # 解析body，将数据按照off写入本地，如果写完则需要更新mtime
-                            con = self.recv_pack().decode(encoding='gbk')
-                            self.manage_api_download(Done, task_id, body_json['path'], body_json['filename'],
-                                                     body_json['offset'], body_json['chunksize'], con)
+                            # f = open(req_body)
+                            file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], req_body['path'], req_body['filename'])
+                            f = open(file_path, 'wb+')
+                            res = sock2file(self.sock, f, req_body['offset'], req_body['chunksize'])
+                            if res == 0:
+                                print('[error = 0] current socket is not readable')
+                                if not Done:
+                                    task = self.task_queue[task_id]
+                                else:
+                                    task = self.complete_queue[task_id]
+                                self.gen_task_download_upload(task['task_type'], task['f_path'],
+                                                              task['f_name'], task['f_size'], task['f_mtime'], task['md5'])
+                            elif res == -1:
+                                print('[error = -1] read from socket error!')
+
+                            if Done:
+                                mtime = self.complete_queue[task_id]['f_mtime']
+                                os.utime(file_path, (mtime, mtime))
+                            # con = self.recv_pack().decode(encoding='gbk')
+                            # self.manage_api_download(Done, task_id, req_body['path'], req_body['filename'],
+                            #                          req_body['offset'], req_body['chunksize'], con)
 
                         elif head == 'uploadFileRes' or head == 'uploadChunkRes':
                             # 对应task_que中的cnt+1
