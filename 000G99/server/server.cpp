@@ -532,54 +532,6 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
 
 
 /**
- * ! deprecated
- * 函数功能：处理[上传文件]事件，用于预先判断能否秒传
- * 输入参数：{session, queueid, filename, path, md5, size, mtime }
- * 返回值：
- * 详细描述：请求 {session, queueid, filename, path, md5, size, mtime } -> 响应 {error, msg, queueid }
- *             -> 下载成功，响应 {error, msg, queueid }
- *             -> 下载失败，响应 {error, msg, queueid, vfile_id }
- */ 
-void Server::upload(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
-{
-    int size = header["size"].get<int>();
-    string filename = header["filename"].get<string>();
-    string md5 = header["md5"];
-
-
-}
-
-/**
- * ! deprecated
- * 函数功能：处理[下载某个chunk]事件
- * 输入参数：{session, md5, queueid, offset, chunksize }
- * 返回值：
- * 详细描述：请求 {session, md5, queueid, offset, chunksize } -> 响应 {error, msg, queueid }
- *             -> 下载成功，响应 {error, msg, queueid } + [binary chunk data]
- *             -> 下载失败，响应 {error, msg, queueid }
- */ 
-void Server::download(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
-{
-    string filename = header["filename"].get<string>();
-    int fd = open(filename.c_str(), O_RDWR);
-    struct stat stat_buf;
-    fstat(fd, &stat_buf);
-
-    /* 发送res_header给client */
-    json res_header;
-    res_header["size"] = stat_buf.st_size;
-    sinfo->send_header(res_header);
-
-    /* 向client发送真正的数据文件 */
-    sendfile(sinfo->sock, fd, NULL, stat_buf.st_size);
-
-    // TODO 这里有隐患，sendfile()失败怎么办?write()失败怎么办?
-    char buffer = '#';
-    write(sinfo->sock, &buffer, 1);
-    close(fd);
-}
-
-/**
  * 函数功能：处理[注册]事件
  * 输入参数：{username,password}
  * 返回值：空
