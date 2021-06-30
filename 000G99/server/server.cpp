@@ -472,117 +472,51 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
 
             std::cout << type << std::endl;
             res_type = m_type[type];
-            // 根据不同的type，执行不同的操作
-            if(type == "signup"){
-                try{
+            try{
+                // 根据不同的type，执行不同的操作
+                if(type == "signup"){
                     signup(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "login"){
-                try{
+                else if(type == "login"){
                     login(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "logout"){
-                try{
+                else if(type == "logout"){
                     logout(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "setbind"){
-                try{
+                else if(type == "setbind"){
                     setbind(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "disbind"){
-                try{
+                else if(type == "disbind"){
                     disbind(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "getdir"){
-                try{
+                else if(type == "getdir"){
                     getdir(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "uploadFile"){
-                try{
+                else if(type == "uploadFile"){
                     uploadFile(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "uploadChunk"){
-                try{
+                else if(type == "uploadChunk"){
                     uploadChunk(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "downloadFile"){
-                try{
+                else if(type == "downloadFile"){
                     downloadFile(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "deleteFile"){
-                try{
+                else if(type == "deleteFile"){
                     deleteFile(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "createDir"){
-                try{
+                else if(type == "createDir"){
                     createDir(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
                 }
-            }
-            else if(type == "deleteDir"){
-                try{
-                deleteDir(header, sinfo);
-                }catch(json::exception e)
-                {
-                    std::cout << e.what() << std::endl;
-                    close_release(sinfos[sockfd]);
+                else if(type == "deleteDir"){
+                    deleteDir(header, sinfo);
                 }
-            }
-            else if(type == "other"){
+                else if(type == "other"){
 
+                }
+            }catch(json::exception e)
+            {
+                std::cout << e.what() << std::endl;
+                close_release(sinfos[sockfd]);
             }
         }
         else if(events[i].events & EPOLLHUP){

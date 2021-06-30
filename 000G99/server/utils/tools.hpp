@@ -11,6 +11,9 @@
 /* select */
 #include <sys/select.h>
 
+/* fstat */
+#include <sys/stat.h>
+
 /* rand */
 #include <stdlib.h>
 
@@ -71,6 +74,32 @@ bool sock_ready_to_read(int sock)
     return false;
 }
 
+bool sock_ready_to_write(int sock)
+{
+    printf("检查socket是否就绪\n");
+    fd_set wfds;
+    timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    FD_ZERO(&wfds);
+    FD_SET(sock, &wfds);
+    int res = select(sock + 1, NULL, &wfds, NULL, &tv);
+    if(FD_ISSET(sock, NULL))
+    {
+        return true;
+    }
+    return false;
+}
+
+off_t get_file_size(const string& filename)
+{
+    int fd = open(filename.c_str(), O_RDONLY);
+    struct stat buf;
+    fstat(fd, &buf);
+    close(fd);
+    return buf.st_size;
+}
+
 /**
  * 保证socket正常，文件存在，文件大小合适的情况下
  * 将数据写入指定文件中
@@ -78,12 +107,10 @@ bool sock_ready_to_read(int sock)
  */ 
 ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t chunksize)
 {
-    bool ready = sock_ready_to_read(sock);
-    // printf("socket %s\n", ready ? "就绪" : "放弃");
-    if (!ready)
-    {
+
+    off_t filesize = get_file_size(filename);
+    if(offset + chunksize > filesize)
         return 0;
-    }
 
     int pipefd[2];
     pipe(pipefd);
@@ -91,10 +118,33 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
     // socket -> data -> file
     int fd = open(filename.c_str(), O_WRONLY, 766);
 
-    ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
+    ssize_t cnt = 0;
 
-    ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE );
-    printf("read %ld bytes from sock, write %ld bytes to file\n", r_bytes, w_bytes);
+    while(cnt != chunksize)
+    {
+        bool ready = sock_ready_to_read(sock);
+        // printf("socket %s\n", ready ? "就绪" : "放弃");
+        if (!ready)
+        {
+            close(fd);
+            close(pipefd[0]);
+            close(pipefd[1]);
+            // 超出了可以忍受的时间，还没有收到足够的字节数量，就不再等待
+            return 0;
+        }
+
+        ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
+        ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE );
+        printf("read %ld bytes from sock, write %ld bytes to file\n", r_bytes, w_bytes);
+
+        if(w_bytes == 0)
+            break;
+        if(w_bytes == -1)
+            return -1;
+        cnt += w_bytes;
+        offset += w_bytes;
+        chunksize -= w_bytes;
+    }
 
     close(fd);
     close(pipefd[0]);
@@ -105,7 +155,7 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
     {
         printf("read chunks without end_zero\n");
     }
-    return w_bytes;
+    return cnt;
 }
 
 /**
@@ -121,17 +171,40 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
     // file -> data -> socket
     int fd = open(filename.c_str(), O_RDONLY, 766);
 
-    ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
+    ssize_t cnt = 0;
 
-    ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
-    printf("read %ld from file, write %ld bytes to sock\n", r_bytes, w_bytes);
+    while(cnt != chunksize)
+    {
+        bool ready = sock_ready_to_write(sock);
+        if (!ready)
+        {
+            close(fd);
+            close(pipefd[0]);
+            close(pipefd[1]);
+            // 超出了可以忍受的时间，还没有缓冲区可以发送，就不再等待
+            return 0;
+        }
+        
+        ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
+        ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, chunksize, SPLICE_F_MORE | SPLICE_F_MOVE);
+
+        printf("read %ld from file, write %ld bytes to sock\n", r_bytes, w_bytes);
+        if(w_bytes == 0)
+            break;
+        if(w_bytes == -1)
+            return -1;
+        cnt += w_bytes;
+        offset += w_bytes;
+        chunksize -= w_bytes;
+    }
+
 
     close(fd);
     close(pipefd[0]);
     close(pipefd[1]);
     char temp = '\0';
     write(sock, &temp, 1);
-    return w_bytes;
+    return cnt;
 }
 
 /**
