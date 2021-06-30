@@ -101,7 +101,7 @@ struct SOCK_INFO{
     sock(_sock), client_port(_client_port), client_ip(_client_ip), buffer_len(0) {};
     int recv_header();          // 从指定的socket中读取一个json到缓冲区
     json parse_header(int);        // 从缓冲区中解析出一个json
-    int send_header(json&);          // 向指定的socket发送一个json数据
+    int send_header(string, json&);          // 向指定的socket发送一个json数据
     string parse_req_type();
 };
 
@@ -196,9 +196,9 @@ json SOCK_INFO::parse_header(int len)
 /**
  * 发送一个json+尾零
  */ 
-int SOCK_INFO::send_header(json& header)
+int SOCK_INFO::send_header(string res_type, json& header)
 {
-    string msg = header.dump();
+    string msg = res_type + header.dump();
     // TODO 这里应该采用writen
     // write有可能没有把数据全部发送
     write(sock, msg.c_str(), msg.size() + 1); // 这里有 +1 多发送了尾零
@@ -222,8 +222,8 @@ private:
 
     /* 处理多个TCP socket需要维护的一些数据结构 */
     std::unordered_map<int, std::shared_ptr<SOCK_INFO>> sinfos;  /* client_fd -> SOCK_INFO 不能采用数组，因为断开连接之后前面的fd有可能出现缺失 */
-
-    
+    std::unordered_map<string, string> m_type;
+    string res_type;
 
 private:
     int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
@@ -298,6 +298,21 @@ public:
         mysql_set_character_set(db, "gbk");
 
         srand(time(NULL));
+
+        m_type["signup"] = "signupRes\n";
+        m_type["login"] = "loginRes\n";
+        m_type["logout"] = "logoutRes\n";
+        m_type["disbind"] = "disbindRes\n";
+        m_type["setbind"] = "setbindRes\n";
+        m_type["getdir"] = "getdirRes\n";
+        m_type["uploadFile"] = "uploadFileRes\n";
+        m_type["uploadChunk"] = "uploadChunkRes\n";
+        m_type["downloadFile"] = "downloadFileRes\n";
+        m_type["deleteFile"] = "deleteFileRes\n";
+        m_type["createDir"] = "createDirRes\n";
+        m_type["deleteDir"] = "deleteDirRes\n";
+        // m_type[""] = "Res\n";
+        
 
     }
     ~Server(){
@@ -405,6 +420,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             printf("客户端请求header%s\n", header.dump().c_str());
 
             std::cout << type << std::endl;
+            res_type = m_type[type];
             // 根据不同的type，执行不同的操作
             if(type == "signup"){
                 try{
@@ -553,7 +569,7 @@ void Server::signup(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(user_exist){
         res["error"] = 1;
         res["msg"] = "username has been registered";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
         return;
     }
 
@@ -569,7 +585,7 @@ void Server::signup(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 1;
         res["msg"] = "signup fail for db insert";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -600,7 +616,7 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if (uid == -1){
         res["error"] = 1;
         res["msg"] = "username password not match";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
         return;
     }
 
@@ -617,7 +633,7 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["msg"] = "login success";
         res["session"] = session;
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -645,7 +661,7 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "log out success";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     close_release(sinfo);
     return;
 }
@@ -679,7 +695,7 @@ void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "bind success";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -707,7 +723,7 @@ void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "disbind success";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -736,7 +752,7 @@ void Server::getdir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // json file_dir = std::move(get_file_dir(uid, bindid));
     // json file_dir = get_file_dir(uid, bindid);
     res["dir_list"] = get_file_dir(uid, bindid);
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 
 }
@@ -781,7 +797,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         {
             res["error"] = 1;
             res["msg"] = "create dir failed";
-            sinfo->send_header(res);
+            sinfo->send_header(res_type, res);
             return;
         }
     }
@@ -844,7 +860,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         if(create_file_fail){
             res["error"] = 1;
             res["msg"] = "server create file failed for short of space";
-            sinfo->send_header(res);
+            sinfo->send_header(res_type, res);
             return;
         }
 
@@ -885,7 +901,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
             res["vfile_id"] = vid;
         }
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -933,7 +949,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
         res["error"] = 0;
         res["msg"] = "this chunk has been uploaded";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
         return;
     }
 
@@ -976,7 +992,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 1;
         res["msg"] = temp;
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -994,7 +1010,7 @@ int Server::checkSession(json& header, json& res, std::shared_ptr<SOCK_INFO> & s
     {
         res["error"] = 2;
         res["msg"] = "session has been destroyed, user need to login";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
     }
     return uid;
 }
@@ -1014,12 +1030,12 @@ int Server::checkBind(json& header, json& res, int uid, std::shared_ptr<SOCK_INF
     if(bindid == -1){
         res["error"] = 3;
         res["msg"] = "user not exist";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
     }
     else if(bindid == 0){
         res["error"] = 3;
         res["msg"] = "user not bind server dir";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
     }
     return bindid;
 }
@@ -1063,7 +1079,7 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     //     res["error"] = 1;
     //     res["msg"] = temp;
     // }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     send_to_socket(sinfo->sock, filename, offset, chunksize);
     return;
 }
@@ -1099,7 +1115,7 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(dirid == -1){
         res["error"] = 1;
         res["msg"] = "parent dir not exist";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
         return;
     }
 
@@ -1111,7 +1127,7 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "delete file success";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -1149,7 +1165,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(dirid != -1){
         res["error"] = 0;
         res["msg"] = "dir has been created";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
         return;
     }
 
@@ -1161,7 +1177,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "create dir success";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
@@ -1199,7 +1215,7 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(dirid == -1){
         res["error"] = 0;
         res["msg"] = "dir has been deleted";
-        sinfo->send_header(res);
+        sinfo->send_header(res_type, res);
         return;
     }
 
@@ -1211,7 +1227,7 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "delete dir success";
     }
-    sinfo->send_header(res);
+    sinfo->send_header(res_type, res);
     return;
 }
 
