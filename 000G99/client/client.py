@@ -282,8 +282,6 @@ class Client:
         res_body = json.loads(res_body[0:-1])
 
         if res_head == 'loginRes':
-            # print(res_body)
-            # res_body = json.loads(res_body)
             if res_body['error']:
                 # 处理失败的操作
                 print('登录失败！')
@@ -326,7 +324,6 @@ class Client:
         res_body = json.loads(res_body[0:-1])
 
         if res_head == 'logoutRes':
-            res_body = json.loads(res_body)
             if res_body['error']:
                 # 处理失败的操作
                 print('登出失败！')

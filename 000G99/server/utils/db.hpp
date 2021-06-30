@@ -6,6 +6,9 @@
 using string = std::string;
 using json = nlohmann::json;
 
+/* debug */
+#include <iostream>
+using std::endl;
 
 extern MYSQL* db;
 
@@ -207,6 +210,33 @@ int get_bindid_by_uid(int uid)
     return bindid;
 }
 
+string get_username_by_uid(int uid)
+{
+    string username = "";
+    char query[256];
+    snprintf(query, sizeof(query), "select user_name from user where user_id = %d;", uid);
+
+    if (mysql_query(db, query)) {
+        finish_with_error(db);
+    }
+
+    MYSQL_ROW row;
+    MYSQL_RES *result;
+
+    if ((result = mysql_store_result(db))==NULL) {
+        finish_with_error(db);
+    }
+
+    if ((row = mysql_fetch_row(result)) != NULL)
+    {
+        username = string(row[0]);
+    }
+
+    mysql_free_result(result);   
+
+    return username;
+}
+
 /**
  * 判断 指定用户的目录是否存在
  * 指定目录存在，返回 dirid
@@ -269,7 +299,7 @@ json get_file_dir(int uid, int bindid)
             { "path", row[1] },
             { "md5", row[2] },
             { "size", atoll(row[3]) },
-            { "mtime", atoll(row[4]) }
+            { "mtime", atoi(row[4]) }
         };
         res.push_back(temp);
     }
@@ -298,6 +328,7 @@ json get_vinfo(int dirid, const string& filename)
     
     json res;
     res["vid"] = -1;
+    res["md5"] = string("");
 
     if ((result = mysql_store_result(db))==NULL) {
         finish_with_error(db);
@@ -306,7 +337,8 @@ json get_vinfo(int dirid, const string& filename)
     if ((row = mysql_fetch_row(result)) != NULL)
     {
         res["vid"] = atoi(row[0]);
-        res["md5"] = row[1];
+        res["md5"] = string(row[1]);
+        // std::cout << atoi(row[0]) << " " << string(row[1]) << endl;
     }
     return res;
 }
@@ -409,7 +441,7 @@ bool write_session(int uid, const string& session)
 {
     char query[256];
     snprintf(query, sizeof(query), "insert into user_session (`session`, `session_uid`) values('%s', %d);", session.c_str(), uid);
-
+    printf("%s\n", query);
     bool error_occur = false;
     if (mysql_query(db, query)) {
         error_occur = true;
@@ -444,7 +476,7 @@ bool create_dir(int uid, int bindid, const string& path)
  * 创建成功， 返回 vid
  * 创建失败， 返回 -1
  */ 
-int create_vfile(int dirid, const string& filename, off_t size, const string& md5, int mtime, const string& chunks, int cnt, int total, int complete)
+int create_vfile(int dirid, const string& filename, ll size, const string& md5, int mtime, const string& chunks, int cnt, int total, int complete)
 {
     // string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime, vfile_chunks, vfile_cnt, vfile_total, vfile_complete) values( " + dirid + ", '" + filename + "', " + size + ", '" + md5 + "', " + mtime + ", '" + chunks + "', " + cnt + ", " + total + ", " + complete + ")";
 
@@ -592,7 +624,7 @@ bool update_vfile_upload_progress(int vid, const string& chunks, int cnt, int co
  * 用于初次 uploadFile API
  * 更新同名 vfile 的相关信息，md5, chunks, size, mtime, cnt, total, complete
  */ 
-bool update_vfile_whole(int vid, const string &md5, const string &chunks, off_t size, int mtime, int cnt, int total, int complete)
+bool update_vfile_whole(int vid, const string &md5, const string &chunks, ll size, int mtime, int cnt, int total, int complete)
 {
     string query = "update `virtual_file` set vfile_md5 = '" + md5 + "', vfile_chunks = '";
 
