@@ -227,9 +227,9 @@ void _logout(string phase,string session)
 
 //=========================================
 
-typedef unsigned long long ull;
+typedef long long ll;
 
-void _uploadFile(string phase, string sid, int qid, string fname,string path,string md5,ull size, int mtime)
+void _uploadFile(string phase, string sid, int qid, string fname,string path,string md5,ll size, int mtime)
 {
     start(phase);
     string msg = phase + '\n';
@@ -250,7 +250,7 @@ void _uploadFile(string phase, string sid, int qid, string fname,string path,str
     end(phase);
 }
 
-void _uploadChunk(string phase, string sid, int vid,int qid, int chunkid, ull offset,int chunksize)
+void _uploadChunk(string phase, string sid, int vid,int qid, int chunkid, ll offset,int chunksize)
 {
     start(phase);
     string msg = phase + '\n';
@@ -270,7 +270,7 @@ void _uploadChunk(string phase, string sid, int vid,int qid, int chunkid, ull of
     end(phase);
 }
 
-void _downloadFile(string phase, string sid, string md5, int qid, ull offset, int chunksize)
+void _downloadFile(string phase, string sid, string md5, int qid, ll offset, int chunksize)
 {
     start(phase);
     string msg = phase + '\n';
@@ -421,6 +421,8 @@ void test()
     // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/root", "321dcba", 8*1024*1024+1, 2021);
     // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/test/here", "abcd123", 100, 2021);
     // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "test.doc", "/test/here", "321dcba", 8*1024*1024+1, 2021);
+    // long long sz = ll(4) * 1024 * 1024 * 1024;
+    // _uploadFile("uploadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 100, "bigfile.doc", "/test/here", "bigfile", sz, 2021);
 
     // // deleteFile
     // // 1 session 不存在 -> 重新登录 done
@@ -438,11 +440,14 @@ void test()
     // _uploadChunk("uploadChunk", "123", 15, 100, 0, 0, 4 * 1024 * 1024);
     // _uploadChunk("uploadChunk", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 15, 100, 0, 0, 1025);
 
-    // downloadFile
+    // // downloadFile
+    // // 1 session 不存在 -> 重新登录 done
+    // // 2 没有绑定 -> 绑定 done
+    // // 3 下载成功
     // _downloadFile("downloadFile", "666", "666", 100, 100, 100); // no session
     // _downloadFile("downloadFile", "aaa", "666", 100, 100, 100); // no bind
-    _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "666", 100, 100, 100); // 应该检测到vfile中没有对应的md5文件而失败
-    _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "777", 100, 100, 100); // 成功
+    // _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "666", 100, 100, 100); // 应该检测到vfile中没有对应的md5文件而失败
+    // _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "777", 100, 100, 100); // 成功
 }
 
 // _login("login","root2019", "yszhou2019");

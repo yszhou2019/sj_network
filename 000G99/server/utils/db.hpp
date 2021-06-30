@@ -449,7 +449,7 @@ bool create_dir(int uid, int bindid, const string& path)
  * 创建成功， 返回 vid
  * 创建失败， 返回 -1
  */ 
-int create_vfile(int dirid, const string& filename, off_t size, const string& md5, int mtime, const string& chunks, int cnt, int total, int complete)
+int create_vfile(int dirid, const string& filename, ll size, const string& md5, int mtime, const string& chunks, int cnt, int total, int complete)
 {
     // string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime, vfile_chunks, vfile_cnt, vfile_total, vfile_complete) values( " + dirid + ", '" + filename + "', " + size + ", '" + md5 + "', " + mtime + ", '" + chunks + "', " + cnt + ", " + total + ", " + complete + ")";
 
@@ -597,7 +597,7 @@ bool update_vfile_upload_progress(int vid, const string& chunks, int cnt, int co
  * 用于初次 uploadFile API
  * 更新同名 vfile 的相关信息，md5, chunks, size, mtime, cnt, total, complete
  */ 
-bool update_vfile_whole(int vid, const string &md5, const string &chunks, off_t size, int mtime, int cnt, int total, int complete)
+bool update_vfile_whole(int vid, const string &md5, const string &chunks, ll size, int mtime, int cnt, int total, int complete)
 {
     string query = "update `virtual_file` set vfile_md5 = '" + md5 + "', vfile_chunks = '";
 

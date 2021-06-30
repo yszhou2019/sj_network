@@ -17,28 +17,27 @@
 
 using string = std::string;
 using json = nlohmann::json;
-typedef unsigned long long ull;
 typedef long long ll;
 
-const ull CHUNK_SIZE = 4 * 1024 * 1024;
+const ll CHUNK_SIZE = 4 * 1024 * 1024;
 const string StorePath = "store/";
 
 //=====================================
 // DONE
 
-int get_chunks_num(ull size)
+int get_chunks_num(ll size)
 {
     return static_cast<int>(size / CHUNK_SIZE + (size % CHUNK_SIZE == 0 ? 0 : 1));
 }
 
-json generate_chunks_info(ull size, int chunk_num)
+json generate_chunks_info(ll size, int chunk_num)
 {
     json res;
     json temp;
     // json total;
     for (int i = 0; i < chunk_num; i++)
     {
-        ull chunk_bytes = size >= CHUNK_SIZE ? CHUNK_SIZE : size;
+        ll chunk_bytes = size >= CHUNK_SIZE ? CHUNK_SIZE : size;
         temp.clear();
         temp.push_back(i * CHUNK_SIZE);
         temp.push_back(chunk_bytes);
@@ -113,7 +112,7 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
  * 完成成功，返回 false
  * 创建失败，返回 true
  */ 
-bool create_file_allocate_space(const string& filename, off_t size)
+bool create_file_allocate_space(const string& filename, ll size)
 {
     int fd = open(filename.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     int res = fallocate(fd, 0, 0, size);
