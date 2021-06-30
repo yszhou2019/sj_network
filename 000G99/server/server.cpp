@@ -1234,7 +1234,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(bindid == 0 || bindid == -1)
         return;
 
-    string path = prefix + "/" + dirname;
+    string path = prefix + dirname;
     int dirid = get_dirid(uid, bindid, path);
     if(dirid != -1){
         res["error"] = 0;
