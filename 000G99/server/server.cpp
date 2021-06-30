@@ -58,7 +58,9 @@ using json = nlohmann::json;
 
 MYSQL* db;
 
+#define conn(...) Server::LOG("CONN", __DATE__, __TIME__, __VA_ARGS__)
 #define logger(...) Server::LOG("LOG", __DATE__, __TIME__, __VA_ARGS__)
+#define trans(...) Server::LOG("TRANSACION", __DATE__, __TIME__, __VA_ARGS__)
 
 const int listen_Q = 20;
 const int MAX_EVENT_NUMBER = 100;
@@ -383,7 +385,7 @@ void Server::close_release(std::shared_ptr<SOCK_INFO> & sinfo){
     
     time_t now = time(0);
     char *dt = ctime(&now);
-    logger("%s:%d disconnect.", inet_ntoa(client.sin_addr), sinfo->client_port);
+    conn("%s:%d disconnect.", inet_ntoa(client.sin_addr), sinfo->client_port);
     // int res = fprintf(log, "%s%s:%d disconnect. Total bytes from client: %d, total bytes from server: %d.\n", dt, inet_ntoa(client.sin_addr), sinfo.client_port, sinfo.C2S_total, sinfo.S2C_total);
     remove_event(epoll_fd, sinfo->sock);
     sinfos.erase(sinfo->sock);
@@ -430,7 +432,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
 
             time_t now = time(0);
             char *dt = ctime(&now);
-            logger("%s:%d connect.", inet_ntoa(client.sin_addr), client.sin_port);
+            conn("%s:%d connect.", inet_ntoa(client.sin_addr), client.sin_port);
             printf("%s%s:%d  %d新建连接.\n", dt, inet_ntoa(client.sin_addr), client.sin_port, client_fd);
         } 
         else if(events[i].events & EPOLLIN) {
@@ -490,13 +492,13 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 }
             }
             else if(type == "logout"){
-                // try{
+                try{
                     logout(header, sinfo);
-                // }catch(json::exception e)
-                // {
-                //     std::cout << e.what() << std::endl;
-                //     close_release(sinfos[sockfd]);
-                // }
+                }catch(json::exception e)
+                {
+                    std::cout << e.what() << std::endl;
+                    close_release(sinfos[sockfd]);
+                }
             }
             else if(type == "setbind"){
                 try{
@@ -629,6 +631,7 @@ void Server::signup(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(!error_occur){
         res["error"] = 0;
         res["msg"] = "signup success";
+        logger("user: %s signup.", username.c_str());
     }
     else{
         res["error"] = 1;
@@ -755,6 +758,7 @@ void Server::setbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     else{
         res["error"] = 0;
         res["msg"] = "bind success";
+        trans("uid: %d setbind %d.", uid, bindid);
     }
     sinfo->send_header(res_type, res);
     return;
@@ -783,6 +787,7 @@ void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     }else{
         res["error"] = 0;
         res["msg"] = "disbind success";
+        trans("uid: %d disbind.", uid);
     }
     sinfo->send_header(res_type, res);
     return;
@@ -813,6 +818,7 @@ void Server::getdir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // json file_dir = std::move(get_file_dir(uid, bindid));
     // json file_dir = get_file_dir(uid, bindid);
     res["dir_list"] = get_file_dir(uid, bindid);
+    trans("uid: %d get dir.", uid);
     sinfo->send_header(res_type, res);
     return;
 
@@ -906,6 +912,9 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         if(error_occur){
             res["error"] = 1;
             res["msg"] = "DB operate failed, need to retry";
+        }else{
+            
+        trans("uid: %d uploadFile (md5:%s) lightning transfer success.", uid,md5.c_str());
         }
     }else{
 
@@ -961,6 +970,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
             res["msg"] = "need to upload this file";
             res["vfile_id"] = vid;
         }
+        trans("uid: %d uploadFile (md5:) need to upload.", uid,md5.c_str());
     }
     sinfo->send_header(res_type, res);
     return;
@@ -1044,6 +1054,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         // vfile["complete"] = (cnt == total ? 1 : 0);
 
         update_vfile_upload_progress(vfile_id, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
+        trans("uid: %d uploadChunk (md5:%s) chunkid %d success.", uid,md5.c_str(),chunkid);
     }
     else
     {
@@ -1052,6 +1063,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         // write failed
         res["error"] = 1;
         res["msg"] = temp;
+        trans("uid: %d uploadChunk (md5:%s) chunkid %d failed.", uid,md5.c_str(),chunkid);
     }
     sinfo->send_header(res_type, res);
     return;
@@ -1142,6 +1154,7 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // }
     sinfo->send_header(res_type, res);
     send_to_socket(sinfo->sock, filename, offset, chunksize);
+        trans("uid: %d downloadChunk (md5:%s) chunk offset %ld success.", uid,md5.c_str(),offset);
     return;
 }
 
@@ -1187,6 +1200,7 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     }else{
         res["error"] = 0;
         res["msg"] = "delete file success";
+        trans("uid: %d delete file %s success.", uid,filename.c_str());
     }
     sinfo->send_header(res_type, res);
     return;
@@ -1237,6 +1251,7 @@ void Server::createDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     }else{
         res["error"] = 0;
         res["msg"] = "create dir success";
+        trans("uid: %d createDir %s success.", uid, path.c_str());
     }
     sinfo->send_header(res_type, res);
     return;
