@@ -45,6 +45,7 @@
 
 /* debug */
 #include <iostream>
+#include <fstream>
 #include "utils/debug.hpp"
 
 
@@ -215,6 +216,14 @@ private:
     // char serv_ip_str[30];
     sockaddr_in serv_addr;
 
+    string db_ip;
+    string db_name;
+    string db_user;
+    string db_pwd;
+    string store_path;
+    string log_name;
+    string realfile_path;
+
     /* socket相关 */
     epoll_event events[MAX_EVENT_NUMBER];
     int listen_fd;
@@ -226,6 +235,8 @@ private:
     string res_type;
 
 private:
+    void readConf();
+    string get_filename_by_md5(const string &);
     int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
     int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
 
@@ -252,22 +263,15 @@ private:
 public:
     Server(int _s_port, const char* _s_ip)
     {
-        log = fopen("u1752240.log", "a+");
+        readConf();
+        log = fopen( log_name.c_str(), "a+");
         if(log==nullptr){
-            printf("open log failed!\n");
+            printf("open log failed!\nlog name %s\n",log_name.c_str());
         }
         /* stdio functions are bufferd IO, so need to close buffer */
         if(setvbuf(log, NULL, _IONBF, 0)!=0){
             printf("close fprintf buffer failed!\n");
         }
-
-        // strcpy(serv_ip_str, _s_ip);
-        // memset(&serv_addr, 0, sizeof(serv_addr));
-        // serv_addr.sin_family = AF_INET; 
-        // serv_addr.sin_port = htons(serv_port);
-        // serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-        // serv_addr.sin_addr.s_addr = inet_addr(serv_ip_str);
-
 
         listen_fd = create_server("0.0.0.0", _s_port, true);
         // listen to socket
@@ -286,12 +290,13 @@ public:
         // 向内核表中添加fd
         add_event(epoll_fd, listen_fd, EPOLLIN);
 
+
         // 连接db
         if ((db = mysql_init(NULL))==NULL) {
             printf("mysql_init failed\n");
         }
 
-        if (mysql_real_connect(db,"47.102.201.228","root", "root123","netdrive", 0, NULL, 0)==NULL) {
+        if (mysql_real_connect(db,db_ip.c_str(),db_user.c_str(), db_pwd.c_str(),db_name.c_str(), 0, NULL, 0)==NULL) {
             printf("mysql_real_connect failed(%s)\n", mysql_error(db));
         }
 
@@ -323,6 +328,32 @@ public:
     void Run();
 };
 
+
+void Server::readConf()
+{
+    string conf_file = "/home/G1752240/u1752240.conf";
+    // std::cout << conf_file << endl;
+    db_ip = "127.0.0.1";
+    db_name = "db1752240";
+    db_user = "u1752240";
+    db_pwd = "u1752240";
+    // printf("ip %s\nname %s\nuser %s\npwd %s\n", db_ip.c_str(), db_name.c_str(), db_user.c_str(), db_pwd.c_str());
+    std::fstream in;
+    in.open(conf_file, std::ios::in);
+    in >> db_ip >> db_name >> db_user >> db_pwd >> store_path;
+    in.close();
+    log_name = store_path + "/log/u1752240.log";
+    realfile_path = store_path + "/realfile/";
+    printf("DB: ip %s\nname %s\nuser %s\npwd %s\nstore_path %s\nlog name %s\nreal file path %s\n", db_ip.c_str(), db_name.c_str(), db_user.c_str(), db_pwd.c_str(), store_path.c_str(), log_name.c_str(), realfile_path.c_str());
+}
+
+/**
+ * 
+ */ 
+string Server::get_filename_by_md5(const string& md5)
+{
+    return realfile_path + md5;
+}
 
 
 void Server::close_release(std::shared_ptr<SOCK_INFO> & sinfo){
@@ -610,9 +641,17 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 
     string pwd_encoded = std::move(encode(pwd));
 
+    json res;
+    bool user_exist = if_user_exist(username);
+    if(!user_exist){
+        res["error"] = 1;
+        res["msg"] = "username not exist";
+        sinfo->send_header(res_type, res);
+        return;
+    }
+
     int uid = get_uid_by_name_pwd(username, pwd_encoded); // select(username,pwd)
 
-    json res;
     if (uid == -1){
         res["error"] = 1;
         res["msg"] = "username password not match";
@@ -632,6 +671,9 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "login success";
         res["session"] = session;
+        time_t now = time(0);
+        char *dt = ctime(&now);
+        fprintf(log, "%s [user: %s] login\n", username.c_str());
     }
     sinfo->send_header(res_type, res);
     return;
@@ -651,6 +693,8 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     string session = header["session"].get<string>();
 
     json res;
+    int uid = get_uid_by_session(session);
+    string username = get_username_by_uid(uid);
 
     bool error_occur = destroy_session(session);
     if(error_occur){
@@ -660,6 +704,9 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     else{
         res["error"] = 0;
         res["msg"] = "log out success";
+        time_t now = time(0);
+        char *dt = ctime(&now);
+        fprintf(log, "%s [user: %s] logout\n", username.c_str());
     }
     sinfo->send_header(res_type, res);
     close_release(sinfo);

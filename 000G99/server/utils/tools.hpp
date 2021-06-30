@@ -20,7 +20,6 @@ using json = nlohmann::json;
 typedef long long ll;
 
 const ll CHUNK_SIZE = 4 * 1024 * 1024;
-const string StorePath = "store/";
 
 //=====================================
 // DONE
@@ -128,13 +127,6 @@ bool if_file_exist(const string& filename)
     return access(filename.c_str(), F_OK) == 0;
 }
 
-/**
- * 
- */ 
-string get_filename_by_md5(const string& md5)
-{
-    return StorePath + md5;
-}
 
 /**
  * 对密码进行加密

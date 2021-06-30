@@ -210,6 +210,33 @@ int get_bindid_by_uid(int uid)
     return bindid;
 }
 
+string get_username_by_uid(int uid)
+{
+    string username = "";
+    char query[256];
+    snprintf(query, sizeof(query), "select user_name from user where user_id = %d;", uid);
+
+    if (mysql_query(db, query)) {
+        finish_with_error(db);
+    }
+
+    MYSQL_ROW row;
+    MYSQL_RES *result;
+
+    if ((result = mysql_store_result(db))==NULL) {
+        finish_with_error(db);
+    }
+
+    if ((row = mysql_fetch_row(result)) != NULL)
+    {
+        username = string(row[0]);
+    }
+
+    mysql_free_result(result);   
+
+    return username;
+}
+
 /**
  * 判断 指定用户的目录是否存在
  * 指定目录存在，返回 dirid
