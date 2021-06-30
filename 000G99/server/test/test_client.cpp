@@ -362,9 +362,10 @@ void test()
     // // 1 ÓÃ»§²»´æÔÚ -> Ê§°Ü
     // // 2 ÕËºÅÃÜÂë²»Æ¥Åä -> Ê§°Ü
     // // 3 ³É¹¦
-    // _login("login","root2019", "123");
-    // _login("login","root2018", "123");
-    // _login("login","root2019", "yszhou2019");
+    _login("login","root2019", "123");
+    _login("login","root2018", "123");
+    _login("login","root2017", "123");
+    _login("login","root2019", "yszhou2019");
 
     // // bind
     // // 1 session ²»´æÔÚ -> Ê§°Ü
