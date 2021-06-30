@@ -970,7 +970,7 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
             res["msg"] = "need to upload this file";
             res["vfile_id"] = vid;
         }
-        trans("uid: %d uploadFile (md5:) need to upload.", uid,md5.c_str());
+        trans("uid: %d uploadFile (md5:%s) need to upload.", uid,md5.c_str());
     }
     sinfo->send_header(res_type, res);
     return;
@@ -1027,7 +1027,6 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // 根据md5找到对应的文件
     string md5 = vfile["md5"];
     string filename = get_filename_by_md5(md5);
-
 
     // 进行传输
     ssize_t bytes = write_to_file(sinfo->sock, filename, offset, chunksize);

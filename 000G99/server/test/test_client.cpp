@@ -440,7 +440,7 @@ void test()
     // // 3 删除成功
     // _uploadChunk("uploadChunk", "666", 15, 100, 0, 0, 4 * 1024 * 1024);
     // _uploadChunk("uploadChunk", "123", 15, 100, 0, 0, 4 * 1024 * 1024);
-    // _uploadChunk("uploadChunk", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 15, 100, 0, 0, 1025);
+    _uploadChunk("uploadChunk", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 15, 100, 0, 0, 1025);
 
     // // downloadFile
     // // 1 session 不存在 -> 重新登录 done

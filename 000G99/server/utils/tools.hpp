@@ -8,6 +8,9 @@
 /* splice */
 #include <fcntl.h>
 
+/* select */
+#include <sys/select.h>
+
 /* rand */
 #include <stdlib.h>
 
@@ -49,12 +52,39 @@ json generate_chunks_info(ll size, int chunk_num)
 }
 
 /**
+ * 最多等待1秒
+ */ 
+bool sock_ready_to_read(int sock)
+{
+    printf("检查socket是否就绪\n");
+    fd_set rfds;
+    timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    FD_ZERO(&rfds);
+    FD_SET(sock, &rfds);
+    int res = select(sock + 1, &rfds, NULL, NULL, &tv);
+    if(FD_ISSET(sock, &rfds))
+    {
+        return true;
+    }
+    return false;
+}
+
+/**
  * 保证socket正常，文件存在，文件大小合适的情况下
  * 将数据写入指定文件中
  * 返回写入字节数量
  */ 
 ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t chunksize)
 {
+    bool ready = sock_ready_to_read(sock);
+    // printf("socket %s\n", ready ? "就绪" : "放弃");
+    if (!ready)
+    {
+        return 0;
+    }
+
     int pipefd[2];
     pipe(pipefd);
 
@@ -174,6 +204,11 @@ string generate_session()
 
 void discard_extra(int sock, size_t chunksize)
 {
+    bool ready = sock_ready_to_read(sock);
+    if (!ready)
+    {
+        return;
+    }
     u_char buffer[2048];
     size_t res = chunksize;
     while(res != 0)
