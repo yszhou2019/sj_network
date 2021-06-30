@@ -123,7 +123,7 @@ void send_header(string& msg, json& req)
 
 void recv_print()
 {
-    char buffer[200];
+    char buffer[300];
     // 接收res并打印
     memset(buffer, 0, sizeof(buffer));
     int bytes = read(sock, buffer, sizeof(buffer));
@@ -133,6 +133,14 @@ void recv_print()
         cout << buffer[i];
     }
     cout << endl;
+    // memset(buffer, 0, sizeof(buffer));
+    // bytes = read(sock, buffer, sizeof(buffer));
+    // cout << "接收字节数量 " << bytes << endl;
+    // for (int i = 0; i < bytes; i++)
+    // {
+    //     cout << buffer[i];
+    // }
+    // cout << endl;
 }
 
 //=========================================
@@ -430,6 +438,11 @@ void test()
     // _uploadChunk("uploadChunk", "123", 15, 100, 0, 0, 4 * 1024 * 1024);
     // _uploadChunk("uploadChunk", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", 15, 100, 0, 0, 1025);
 
+    // downloadFile
+    // _downloadFile("downloadFile", "666", "666", 100, 100, 100); // no session
+    // _downloadFile("downloadFile", "aaa", "666", 100, 100, 100); // no bind
+    _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "666", 100, 100, 100); // 应该检测到vfile中没有对应的md5文件而失败
+    _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "777", 100, 100, 100); // 成功
 }
 
 // _login("login","root2019", "yszhou2019");

@@ -1100,18 +1100,19 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     loff_t offset = header["offset"].get<loff_t>();
     size_t chunksize = header["chunksize"].get<size_t>();
 
-    ssize_t bytes = send_to_socket(sinfo->sock, filename, offset, chunksize);
+    // ssize_t bytes = send_to_socket(sinfo->sock, filename, offset, chunksize);
 
-    if( bytes == chunksize) {
+    // if( bytes == chunksize) {
         res["error"] = 0;
-        res["msg"] = "ÏÂÔØ³É¹¦";
-    }else{
-        string temp = "download failed, actural download " + std::to_string(bytes);
-        temp += " bytes, should be " + std::to_string(chunksize) + " bytes";
-        res["error"] = 1;
-        res["msg"] = temp;
-    }
+        res["msg"] = "download success";
+    // }else{
+    //     string temp = "download failed, actural download " + std::to_string(bytes);
+    //     temp += " bytes, should be " + std::to_string(chunksize) + " bytes";
+    //     res["error"] = 1;
+    //     res["msg"] = temp;
+    // }
     sinfo->send_header(res);
+    send_to_socket(sinfo->sock, filename, offset, chunksize);
     return;
 }
 
