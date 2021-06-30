@@ -272,7 +272,7 @@ json get_file_dir(int uid, int bindid)
             { "path", row[1] },
             { "md5", row[2] },
             { "size", atoll(row[3]) },
-            { "mtime", atoll(row[4]) }
+            { "mtime", atoi(row[4]) }
         };
         res.push_back(temp);
     }
