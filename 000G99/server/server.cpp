@@ -520,7 +520,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             }
             else if(type == "getdir"){
                 try{
-                getdir(header, sinfo);
+                    getdir(header, sinfo);
                 }catch(json::exception e)
                 {
                     std::cout << e.what() << std::endl;
@@ -528,17 +528,17 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 }
             }
             else if(type == "uploadFile"){
-                // try{
-                uploadFile(header, sinfo);
-                // }catch(json::exception e)
-                // {
-                //     std::cout << e.what() << std::endl;
-                //     close_release(sinfos[sockfd]);
-                // }
+                try{
+                    uploadFile(header, sinfo);
+                }catch(json::exception e)
+                {
+                    std::cout << e.what() << std::endl;
+                    close_release(sinfos[sockfd]);
+                }
             }
             else if(type == "uploadChunk"){
                 try{
-                uploadChunk(header, sinfo);
+                    uploadChunk(header, sinfo);
                 }catch(json::exception e)
                 {
                     std::cout << e.what() << std::endl;
@@ -547,7 +547,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             }
             else if(type == "downloadFile"){
                 try{
-                downloadFile(header, sinfo);
+                    downloadFile(header, sinfo);
                 }catch(json::exception e)
                 {
                     std::cout << e.what() << std::endl;
@@ -556,7 +556,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             }
             else if(type == "deleteFile"){
                 try{
-                deleteFile(header, sinfo);
+                    deleteFile(header, sinfo);
                 }catch(json::exception e)
                 {
                     std::cout << e.what() << std::endl;
