@@ -4,8 +4,8 @@ SRCS = $(wildcard *.cpp)
 OBJS = $(SRCS:.cpp=.o)
 TRGS = $(patsubst %.cpp, %, $(SRCS))
 
-INCLUDE = -I../../include
-ETC = ../../common/my_etc.cpp
+INCLUDE = -I./include
+ETC = ./common/my_etc.cpp
 TOOLS = my_etc.o
 
 
