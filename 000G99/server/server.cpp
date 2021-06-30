@@ -12,6 +12,9 @@
 #include <fcntl.h> // set socket non-block
 #include "my_etc.h"
 
+/* args */
+#include <stdarg.h>
+
 /* unix sys */
 #include <sys/epoll.h>
 #include <sys/stat.h> // stat file
@@ -30,7 +33,6 @@
 
 /* utils */
 #include "utils/json.hpp"
-#include "utils/log.hpp"
 #include "utils/tools.hpp"
 
 /* db operator */
@@ -56,12 +58,12 @@ using json = nlohmann::json;
 
 MYSQL* db;
 
+#define logger(...) Server::LOG("LOG", __DATE__, __TIME__, __VA_ARGS__)
 
 const int listen_Q = 20;
 const int MAX_EVENT_NUMBER = 100;
 
 const int BUFFER_SIZE = 1024;
-
 
 /* level-triggered */
 void add_event(int epoll_fd, int fd, int state) {
@@ -239,6 +241,7 @@ private:
     string get_filename_by_md5(const string &);
     int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
     int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
+    void LOG(const char *logLevel, const char *date, const char *time, const char *format, ...);
 
 private:
     void close_release(std::shared_ptr<SOCK_INFO> & sinfo);
@@ -355,6 +358,21 @@ string Server::get_filename_by_md5(const string& md5)
     return realfile_path + md5;
 }
 
+void Server::LOG(
+			const char *logLevel,
+            const char *date,
+			const char *time,
+            const char *format ,...)
+{
+ 
+		static char output[1024]={0};
+        va_list arglst;
+        va_start(arglst,format);
+        vsnprintf(output,sizeof(output), format, arglst);
+        fprintf(log, "[%s %s] [%s] %s\n", date, time, logLevel, output);
+        va_end(arglst);
+}
+
 
 void Server::close_release(std::shared_ptr<SOCK_INFO> & sinfo){
     printf("[关闭 ]\n");
@@ -365,7 +383,7 @@ void Server::close_release(std::shared_ptr<SOCK_INFO> & sinfo){
     
     time_t now = time(0);
     char *dt = ctime(&now);
-    int res = fprintf(log, "%s%s:%d disconnect.\n", dt, inet_ntoa(client.sin_addr), sinfo->client_port);
+    logger("%s:%d disconnect.", inet_ntoa(client.sin_addr), sinfo->client_port);
     // int res = fprintf(log, "%s%s:%d disconnect. Total bytes from client: %d, total bytes from server: %d.\n", dt, inet_ntoa(client.sin_addr), sinfo.client_port, sinfo.C2S_total, sinfo.S2C_total);
     remove_event(epoll_fd, sinfo->sock);
     sinfos.erase(sinfo->sock);
@@ -412,7 +430,7 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
 
             time_t now = time(0);
             char *dt = ctime(&now);
-            fprintf(log, "%s%s:%d connect.\n", dt, inet_ntoa(client.sin_addr), client.sin_port);
+            logger("%s:%d connect.", inet_ntoa(client.sin_addr), client.sin_port);
             printf("%s%s:%d  %d新建连接.\n", dt, inet_ntoa(client.sin_addr), client.sin_port, client_fd);
         } 
         else if(events[i].events & EPOLLIN) {
@@ -671,9 +689,7 @@ void Server::login(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "login success";
         res["session"] = session;
-        time_t now = time(0);
-        char *dt = ctime(&now);
-        fprintf(log, "%s [user: %s] login\n", username.c_str());
+        logger("user: %s login", username.c_str());
     }
     sinfo->send_header(res_type, res);
     return;
@@ -704,9 +720,7 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     else{
         res["error"] = 0;
         res["msg"] = "log out success";
-        time_t now = time(0);
-        char *dt = ctime(&now);
-        fprintf(log, "%s [user: %s] logout\n", username.c_str());
+        logger("user: %s logout", username.c_str());
     }
     sinfo->send_header(res_type, res);
     close_release(sinfo);
