@@ -63,11 +63,11 @@ client遇到的一些可以商讨探索的问题，或者自问自答的问题，方便整理思路，放在这个文
 
 4. ~~recver~~
 
-5. handle_login
+5. ~~handle_login~~
 
-6. handle_logout
+6. ~~handle_logout~~
 
-7. handle_signup
+7. ~~handle_signup~~
 
 8. ~~is_cancel_bind~~
 
@@ -155,46 +155,92 @@ id_2:{}
 
    ~~1.2 db_select~~
 
-   1.3 db_update
+   ~~1.3 db_update~~
 
-   1.4 db_delete
+   ~~1.4 db_delete~~
 
 2. gen_req:（生成pack进入req队列，req队列需要将pack拆包并去除数据再发送）
 
-   2.1 gen_req_createDir
+   ~~2.1 gen_req_createDir~~
 
-   2.2 gen_req_uploadFile
+   ~~2.2 gen_req_uploadFile~~
 
-   2.3 gen_req_deleteFile
+   ~~2.3 gen_req_deleteFile~~
 
-   2.4 gen_req_download
+   ~~2.4 gen_req_download~~
 
 3. gen_task:
 
-   3.1 gen_task_upload_download
+   ~~3.1 gen_task_upload_download~~
 
 4. handle:(阻塞情况下的c/s交互)
 
-   3.1 handle_getDir
+   ~~3.1 handle_getDir~~
 
-   3.2 handle_bind
+   ~~3.2 handle_bind~~
 
-   3.3 handle_cancel_bind
+   ~~3.3 handle_cancel_bind~~
 
 5. persistence:
 
-   5.1 bind_persistence
+   ~~5.1 bind_persistence~~
 
-   5.2 queue_persistence
+   ~~5.2 queue_persistence~~
 
    5.3 db_persistence
 
-6. 测试线程
+6. 测试线程定时器
 7. 测试sender和recver
 
 
 
+发现的问题：
+
+1. ~~传给server的数据没有经过删减~~
+
+2. ~~一下传给server三个包~~
+
+   ![image-20210630032827531](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210630032827531.png)
+
 ?	
 
 
+
+test：检测简单的通信
+
+1. login signup
+
+   ![image-20210630141328084](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210630141328084.png)
+
+2. bind
+
+   ![image-20210630141855514](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210630141855514.png)
+
+3. getdir
+
+   handle_getDir有问题
+
+4. uploadFile和downloadFile
+
+   ![image-20210630160700275](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210630160700275.png)
+
+   ![image-20210630163441780](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210630163441780.png)
+
+   ![image-20210630163658378](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210630163658378.png)
+
+
+
+test：检测逻辑问题，
+
+
+
+sender和recver不能同时启动的原因：
+
+1. target=fun，没有括号
+2. 不能用run()，要用start
+
+发送和接收出现数量不匹配的情况：
+
+1. recv和send的系统调用都是不可靠的，正确的做法是将待读取和写入的数据保存到buffer中。
+2. 对于较大的数据，调用linux的零拷贝系统调用，避免过多的io
 
