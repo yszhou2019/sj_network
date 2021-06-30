@@ -22,8 +22,7 @@ $(TOOLS):
 	$(CC) $(INCLUDE) -c $(ETC) `mysql_config --libs --cflags`
 
 $(TRGS):%:%.o $(TOOLS)
-	$(CC) -o $@ $^ `mysql_config --libs --cflags` -L/usr/lib64 -lmariadbclient -lssl -lcrypto -ldl -lpthread
-	cp $@ /test/server/ 
+	$(CC) -o $@ $^ `mysql_config --libs --cflags` -L./lib -lmariadbclient -L/usr/lib64 -lssl -lcrypto -ldl -lpthread
 
 %.o: %.cpp
 	$(CC) $(INCLUDE) -c $<  `mysql_config --libs --cflags`
