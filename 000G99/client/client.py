@@ -1421,7 +1421,7 @@ class Client:
                         # 将res_que中对应的que_id的请求再次放入req_que中
                         self.req_queue.put(self.res_queue.pop(que_id))
 
-    def sync(self, sql_con):
+    def sync(self):
         if self.is_die == 0:
             # print('aa')
             if self.update_flag == 0:
