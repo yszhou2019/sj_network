@@ -9,11 +9,9 @@ sock.listen(5)
 while True:
     sock_c, addr = sock.accept()
     while True:
-        d = {
-
-        }
         str = sock_c.recv(4*1024*1024)
         print(str)
-        sock_c.send(b'abc')
+        s = 'abcd'.encode()
+        sock_c.send(s)
 
 sock.close()

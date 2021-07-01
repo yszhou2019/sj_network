@@ -194,7 +194,7 @@ def gen_req_download(self, f_path, f_name, f_size, md5, task_id):
 def test(client):
     # login
     # suc
-    """
+
     client.sock.send(test_login('user_9', 'userU90512').encode())
     print(client.recv_pack())
     # user not f
@@ -211,7 +211,7 @@ def test(client):
     # suc
     client.sock.send(test_signup('user_101', '123').encode())
     print(client.recv_pack())
-    """
+
 
     # setbind
     # no session
@@ -330,7 +330,7 @@ def test(client):
     client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
     client.sock.send(gen_req_uploadFile(client, '/root/', 'abc123', 800, 'jj99j', 1, 1999).encode())
     print(client.recv_pack())# md5 not exist need to upload file
-    client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
+    client.user_session = '3FslNwoD4oIg3ooR7Qj5ZscJS0rH0zuTPU'
     client.sock.send(gen_req_uploadFile(client, '/root/', 'abc123', 800, 'jj99j', 1, 1999).encode())
     print(client.recv_pack())# md5 not exist need to upload file
     client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
@@ -402,18 +402,24 @@ def test(client):
 
     # downloadFile : self, f_path, f_name, f_size, md5, task_id
     # not bind
-    client.user_session = 'B29j533NLLJ58s6u9NO5EFg35BQg5ZWA'
-    gen_req_download(client, '/', 'txt', 500, 'kk', 9)
-    client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
-    gen_req_download(client, '/', 'txt', 500, 'kk', 9)
+    # client.user_session = 'B29j533NLLJ58s6u9NO5EFg35BQg5ZWA'
+    # gen_req_download(client, '/', 'txt', 500, 'kk', 9)
+    # client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
+    # gen_req_download(client, '/', 'txt', 500, 'kk', 9)
     # downloadFile
 
-    
-if __name__ == '__main__':
-    client = client.Client()
+def add_path_bound(path):
+    if path[0] != '/':
+        path = '/' + path
+    if path[-1] != '/':
+        path += '/'
+    return path
+
+
+def test_upload(client, m_d5):
 
     # 模拟登陆
-    client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
+    client.user_session = 'abc'
     client.user_name = 'zxh'
 
     # 模拟绑定
@@ -427,22 +433,32 @@ if __name__ == '__main__':
     # 创建upload和download的task
     # task_type, f_path, f_name, f_size, f_mtime, md5
     f_path = '/'
-    f_name = 'test2.py'
+    f_name = 'test.py'
 
     # 假设绑定的是当前目录
-    client.bind_path_prefix = os.path.abspath('.')
+    client.bind_path_prefix = add_path_bound(os.path.abspath('.'))
 
-    real_path = os.path.abspath('./test2.py')
+    real_path = os.path.abspath('./test.py')
     size = os.path.getsize(real_path)
     mtime = os.path.getmtime(real_path)
     mtime = int(mtime)
-    md5 = get_file_md5(real_path)
+    md5 = m_d5
     print('...gen_task_download_upload...')
     client.gen_task_download_upload('upload', f_path, f_name, size, mtime, md5)
     # 生成task任务
     # 查看task和req队列
+    print('\n下面生成task以及req队列\n')
     client.test_task()
     client.test_req()
+
+    # ff62bf2e9270b02f475ca0330e1188b2
+    # 16033
+    # client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
+    # client.user_name = 'zxh'
+    # print(client.bind_path_prefix)
+    # f_path = '/txtt/'
+    # f_name = 'test3.py'
+    # client.gen_task_download_upload('download', f_path, f_name, size, mtime, '20210701')
 
     # sender和recver再运行的时候，进行输出
     print('...run server & recver...')
@@ -450,6 +466,119 @@ if __name__ == '__main__':
     t_receiver = threading.Thread(target=client.receiver)
     t_sender.start()
     t_receiver.start()
+
+    time.sleep(3)
+    print('\n任务完成，最终task队列为：')
+    client.test_task()
+    print('\ncom_queue为：')
+    print('[com]', client.complete_queue)
+
+
+def test_download(client, _md5):
+    # 模拟登陆
+    client.user_session = 'abc'
+    client.user_name = 'zxh'
+
+    # 模拟绑定
+    client.is_bind = 1
+    client.bind_path_prefix = os.path.abspath('.')
+
+    # 假设同步完成
+    # 设置连接为非阻塞
+    client.sock.setblocking(False)
+
+    # 假设绑定的是当前目录
+    client.bind_path_prefix = add_path_bound(os.path.abspath('.'))
+
+    real_path = os.path.abspath('./test.py')
+    size = os.path.getsize(real_path)
+    mtime = os.path.getmtime(real_path)
+    mtime = int(mtime)
+    md5 = _md5
+
+    f_path = '/txtt/'
+    f_name = 'test9090.py'
+    client.gen_task_download_upload('download', f_path, f_name, size, mtime, md5)
+
+    # sender和recver再运行的时候，进行输出
+    print('...run server & recver...')
+    t_sender = threading.Thread(target=client.sender)
+    t_receiver = threading.Thread(target=client.receiver)
+    t_sender.start()
+    t_receiver.start()
+
+    time.sleep(3)
+    print('\n任务完成，最终task队列为：')
+    client.test_task()
+    print('\ncom_queue为：')
+    print('[com]', client.complete_queue)
+
+if __name__ == '__main__':
+
+    client = client.Client()
+
+    # md5不存在，应该上传并成功
+    # test_download(client, '202107088909010')
+    # md5存在，秒传成功
+    # test_upload(client, '202107010')
+
+    # md5 存在，开始下载
+    test_download(client, '202107088909010')
+    # client.login_signup()
+    # # 模拟登陆
+    # client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
+    # client.user_name = 'zxh'
+    #
+    # # 模拟绑定
+    # client.is_bind = 1
+    # client.bind_path_prefix = os.path.abspath('.')
+    #
+    # # 假设同步完成
+    # # 设置连接为非阻塞
+    # client.sock.setblocking(False)
+    #
+    # # 创建upload和download的task
+    # # task_type, f_path, f_name, f_size, f_mtime, md5
+    # f_path = '/'
+    # f_name = 'test2.py'
+    #
+    # # 假设绑定的是当前目录
+    # client.bind_path_prefix = add_path_bound(os.path.abspath('.'))
+    #
+    # real_path = os.path.abspath('./test2.py')
+    # size = os.path.getsize(real_path)
+    # mtime = os.path.getmtime(real_path)
+    # mtime = int(mtime)
+    # md5 = '20210701'
+    # print('...gen_task_download_upload...')
+    # client.gen_task_download_upload('upload', f_path, f_name, size, mtime, md5)
+    # # 生成task任务
+    # # 查看task和req队列
+    # client.test_task()
+    # client.test_req()
+    #
+    # # ff62bf2e9270b02f475ca0330e1188b2
+    # # 16033
+    # client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
+    # client.user_name = 'zxh'
+    # print(client.bind_path_prefix)
+    # f_path = '/txtt/'
+    # f_name = 'test3.py'
+    # client.gen_task_download_upload('download', f_path, f_name, size, mtime, '20210701')
+    #
+    # # sender和recver再运行的时候，进行输出
+    # print('...run server & recver...')
+    # t_sender = threading.Thread(target=client.sender)
+    # t_receiver = threading.Thread(target=client.receiver)
+    # t_sender.start()
+    # t_receiver.start()
+
+    #
+    # time.sleep(1)
+    # client.test_task()
+    # print('c', client.complete_queue)
+
+
 
     while True:
         time.sleep(1)

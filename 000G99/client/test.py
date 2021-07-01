@@ -1,8 +1,24 @@
+# coding=gbk
 import os
 import time
 import client
 import threading
+import socket
+import select
 
+import json
+from splice import splice
+
+
+def read_config(file_name):
+    """
+    ´ÓÅäÖÃÎÄ¼şÖĞ¶ÁÈ¡Á¬½Ó·şÎñÆ÷µÄipºÍport
+    """
+    f = open(file_name, 'r')
+    text = f.read()
+    f.close()
+    j_ = json.loads(text)
+    return j_['host'], j_['port']
 
 def search():
     s_path = input('input path:')
@@ -38,7 +54,7 @@ def gen_req_deleteFile(path_file):
     path = path_file[0:-len(file)]
     print(file, path)
 
-gen_req_deleteFile('/root/path/file')
+# gen_req_deleteFile('/root/path/file')
 
 # print(time.ctime(os.path.getmtime('./search_path.py')))
 # gen_down()
@@ -106,16 +122,113 @@ def write2sock(sock, data, n):
     return n - left
 
 
-if __name__ == '__main__':
+def sock_ready_to_write(sock):
+    rs, ws, es = select.select([], [sock], [], 1.0)
+    if sock in ws:
+        return True
+    return False
 
+
+def sock_ready_to_read(sock):
+    rs, ws, es = select.select([sock], [], [], 1.0)
+    if sock in rs:
+        return True
+    return False
+
+
+
+
+
+def file2sock(sock, file, off, chunksize):
+    # print('..exec file2sock ...')
+    # print('sock', sock, 'file', file, 'off', off, 'chunksize', chunksize)
+    cnt = 0
+    size = chunksize
+    # f = open(file, 'r')
+    while cnt != chunksize:
+        ready = sock_ready_to_write(sock)
+        if not ready:
+            return 0
+
+        # w_bytes = splice(f.fileno(), sock.fileno(), offset=off, nbytes=size)
+        data = file.read(size)
+        w_bytes = sock.send(data)
+        print(data)
+
+        if w_bytes == 0:
+            break
+        if w_bytes == -1:
+            return -1
+        cnt += w_bytes
+        off += w_bytes
+        size -= w_bytes
+    return 1
+
+
+def sock2file(sock, file, off, chunksize):
+    cnt = 0
+    size = chunksize
+    r_pipe, w_pipe = os.pipe()
+    while cnt != chunksize:
+        ready = sock_ready_to_read(sock)
+        if not ready:
+            return 0
+
+        # r_bytes = splice(sock.fileno(), r_pipe, offset=off, nbytes=size)
+        # w_bytes = splice(w_pipe, file.fileno(), offset=off, nbytes=size)
+        # print('read {0} bytes from sock, and write {1} bytes to file'.format(r_bytes, w_bytes))
+        data = sock.recv(size)
+        w_bytes = f.write(data)
+        # print(data, size, w_bytes)
+        if w_bytes == 0:
+            break
+        if w_bytes == -1:
+            return -1
+        cnt += w_bytes
+        off += w_bytes
+        size -= w_bytes
+    return 1
+
+def add_path_bound(path):
+    if path[0] != '/':
+        path = '/' + path
+    if path[-1] != '/':
+        path += '/'
+    return path
+
+if __name__ == '__main__':
+    client = client.Client()
     # send con
-    f = open('jjj', 'w')
-    data = 'hi world'
-    n = write2sock(f, data, len(data))
-    print(n, len(data))
-    f.close()
-    f = open('jjj', 'r')
-    print(f.read(n))
+    # f = open('jjj', 'a+')
+    # f.write('hello world')
+    # f.seek(0)
+    # data = f.read()
+    # print(data)
+    # data = 'hi world'
+    # n = write2sock(f, data, len(data))
+    # print(n, len(data))
+    # f.close()
+    # f = open('jjj', 'r')
+    # print(f.read(n))
+    # sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Á¬½Óserver
+    # host_, port_ = '127.0.0.1', 5001
+    # sock.bind((host_, port_))
+    f = open('jjj', 'rb+')
+    # data = client.sock.recv(1024)
+    # print(data)
+    while True:
+        print(file2sock(client.sock, f, 0, 4))
+    print(sock2file(client.sock, f, 0, 4))
+    # file2sock(client.sock, 'jjj', 0, os.path.getsize('jjj'))
+
+    # d = {
+    #     1: '00',
+    #     2: '01'
+    # }
+    # print(d)
+    # d.pop(1)
+    # print(d)
+
 
     # f_name = './test2.py'
     # now_read = 0
@@ -135,30 +248,30 @@ if __name__ == '__main__':
     # print(now_read)
     #
     # client = client.Client()
-    # # å¤„ç†ç™»é™†å’Œæ³¨å†Œäº‹ä»¶ï¼Œç›´åˆ°ç™»é™†æˆåŠŸæ‰ç»“æŸå‡½æ•°
+    # # ´¦ÀíµÇÂ½ºÍ×¢²áÊÂ¼ş£¬Ö±µ½µÇÂ½³É¹¦²Å½áÊøº¯Êı
     # client.login_signup()
     #
-    # # å°†bindçš„æŒä¹…åŒ–å†…å®¹è¯»å–æœ¬åœ°
+    # # ½«bindµÄ³Ö¾Ã»¯ÄÚÈİ¶ÁÈ¡±¾µØ
     # client.read_bind_persistence()
     #
-    # # å¤„ç†ç»‘å®šç›®å½•
+    # # ´¦Àí°ó¶¨Ä¿Â¼
     # is_cancel = False
     # if client.is_bind:
     #     is_cancel = client.is_cancel_bind()
     #     if is_cancel:
     #         client.handle_cancel_bind()
-    # if (not client.is_bind) or is_cancel:  # ç›®å‰æœªç»‘å®šæˆ–è€…ç»‘å®šä¹‹åé€‰æ‹©å–æ¶ˆç»‘å®š
+    # if (not client.is_bind) or is_cancel:  # Ä¿Ç°Î´°ó¶¨»òÕß°ó¶¨Ö®ºóÑ¡ÔñÈ¡Ïû°ó¶¨
     #     client.handle_bind()
     #
-    # # å¤„ç†queueçš„æŒä¹…åŒ–æ–‡ä»¶ï¼Œå¦‚æœä¸Šæ¬¡æœªå®Œæˆä¼šå†æ¬¡åˆ›å»ºé˜Ÿåˆ—
+    # # ´¦ÀíqueueµÄ³Ö¾Ã»¯ÎÄ¼ş£¬Èç¹ûÉÏ´ÎÎ´Íê³É»áÔÙ´Î´´½¨¶ÓÁĞ
     # client.read_queue_persistence()
-    # # å¤„ç†dbçš„æŒä¹…åŒ–æ–‡ä»¶ï¼Œè¿›è¡Œæ¯”å¯¹å¹¶åŒæ­¥
+    # # ´¦ÀídbµÄ³Ö¾Ã»¯ÎÄ¼ş£¬½øĞĞ±È¶Ô²¢Í¬²½
     # client.read_db_persistence()
     #
-    # # è®¾ç½®è¿æ¥ä¸ºéé˜»å¡
+    # # ÉèÖÃÁ¬½ÓÎª·Ç×èÈû
     # client.sock.setblocking(False)
     #
-    # # åˆ›å»ºçº¿ç¨‹å¹¶è¿è¡Œ
+    # # ´´½¨Ïß³Ì²¢ÔËĞĞ
     # t_sender = threading.Thread(target=client.sender)
     # t_receiver = threading.Thread(target=client.receiver)
     # t_sync_timer = threading.Thread(target=client.sync_timer())
@@ -168,4 +281,5 @@ if __name__ == '__main__':
 
     while True:
         time.sleep(1)
+
 
