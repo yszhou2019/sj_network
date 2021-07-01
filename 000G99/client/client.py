@@ -11,6 +11,7 @@ import sqlite3
 import threading
 import hashlib
 import getpass
+import fallocate
 
 
 def add_path_bound(path):
@@ -122,9 +123,13 @@ def create_file(prefix, path, file, f_size):
 
     if os.path.exists(cur_path):
         # print(cur_path)
+
         with open(f_real_path, 'wb') as f:
-            f.seek(f_size-1)
-            f.write(b'\0')
+            # print('path,', path, 'file,', file, 'size,', f_size, 'f_real_path,' ,f_real_path)
+            os.posix_fallocate(f.fileno(), 0, f_size)
+            # print('path,', path, 'file,', file, 'size,', f_size, 'f_real_path,' ,f_real_path)
+            # f.seek(f_size-1)
+            # f.write(b'\0')
 
 
 def is_sucure(password):
@@ -235,7 +240,7 @@ def file2sock(sock, file, off, chunksize):
         file.seek(off)
         data = file.read(size)
         w_bytes = sock.send(data)
-        print(data)
+        # print(data)
 
         if w_bytes == 0:
             break
@@ -700,6 +705,10 @@ class Client:
             print('can not download or upload file bigger than 4GB')
             return
 
+        if f_size < 0:
+            print('can not download or upload file less than 0 byte')
+            return
+
         if task_type == 'download':
             create_file(self.bind_path_prefix, f_path, f_name, f_size)
             total = self.gen_req_download(f_path, f_name, f_size, md5, task_id)
@@ -731,8 +740,8 @@ class Client:
         # self.sock.send(getDir)
         write2sock(self.sock, getDir, len(getDir))
         get_dir_res = self.recv_pack()
-        print('test [get_dir_res]')
-        print(get_dir_res)
+        # print('test [get_dir_res]')
+        # print(get_dir_res)
 
         # 2.2 验证getDir的res
         get_dir_str = get_dir_res.decode(encoding='gbk')
@@ -817,6 +826,7 @@ class Client:
     def add_to_task_que(self, task_id, task_type, f_path, f_name, f_size, f_mtime, md5, cnt, total):
         d = {
             'task_type': task_type,
+            'task_id': task_id,
             'f_path': f_path,
             'f_name': f_name,
             'f_size': f_size,
@@ -895,16 +905,14 @@ class Client:
                         self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
                                                       f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
                         # 将需要下载的文件信息写入db
-                        self.db_insert(relative_path=remote_relative_path, size=remote_file['size'],
-                                       mtime=remote_file['mtime'], md5=remote_file['md5'])
+                        self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
 
                 else:   #没有remote_file对应的文
                     # task_type, f_path, f_name, f_size, md5
-                    self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
-                                                  f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
+                    print('f_size:', remote_file['size'])
+                    self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'], f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
                     # 将需要下载的文件信息写入db
-                    self.db_insert(relative_path=remote_relative_path, size=remote_file['size'],
-                                   mtime=remote_file['mtime'], md5=remote_file['md5'])
+                    self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
 
     def not_first_sync(self):
         # 1. 将本地的所有文件与db进行对比，扫描本地所有文件
@@ -988,7 +996,7 @@ class Client:
                 if local_md5 != -1:
                     # 如果本地的同名文件的md5不同
                     if local_md5 != remote_file['md5']:
-                        # task_type, f_path, f_name, f_size, md5
+                        # task_type, f_path, f_name, f_size, f_mtime, md5
                         self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
                                                       f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
                         # 将需要下载的文件信息写入db
@@ -1214,7 +1222,7 @@ class Client:
                     if head == 'uploadChunk':
                         off, size = body['offset'], body['chunksize']
                         path, filename = body.pop('path'), body.pop('filename')
-                        file_path = "{0}{1}{2}".format(self.bind_path_prefix, path, filename)
+                        file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], path, filename)
 
                         if os.path.exists(file_path):
                             d = {
@@ -1233,18 +1241,20 @@ class Client:
 
                             # send con
                             # file chunk
-                            now_read = 0
-                            f = open(file_path, 'r', encoding='gbk')
-                            while now_read < size:
-                                f.seek(off + now_read)
-                                data = f.read(size - now_read)
-                                n = self.sock.send("{}".format(data).encode(encoding='gbk'))
-                                if n == 0:
-                                    break
-                                now_read += n
+                            # now_read = 0
+                            f = open(file_path, 'rb')
+                            file2sock(self.sock, f, off, size)
+                            # while now_read < size:
+                            #     f.seek(off + now_read)
+                            #     data = f.read(size - now_read)
+                            #     if sock_ready_to_write(self.sock):
+                            #         n = self.sock.send("{}".format(data).encode())
+                            #         if n == 0:
+                            #             break
+                            #         now_read += n
 
-                            print('\n\n{}\n\n'.format(now_read))
-                            self.sock.send(b'\0')
+                            # print('\n\n{}\n\n'.format(now_read))
+                            # self.sock.send(b'\0')
 
                             self.res_queue[que_id] = init_req
                             print('\n收到一份res,[res_queue]', self.res_queue)
@@ -1299,7 +1309,7 @@ class Client:
             rs, ws, es = select.select([self.sock], [], [])
             if self.sock in rs:
                 init_res = self.recv_pack().decode(encoding='gbk')
-                print('\nrecver收到原始数据', init_res.encode())
+                # print('\nrecver收到原始数据', init_res.encode())
 
                 # 解析接收数据的res头以及res_body并转化为json的dict格式
                 head = init_res.split('\n')[0]
@@ -1327,7 +1337,7 @@ class Client:
                     path, filename, taskid = req_body['path'], req_body['filename'], req_body['taskid']
 
                     # 定位文件并获取大小
-                    fpath = "{0}{1}{2}".format(self.bind_path_prefix, path, filename)
+                    fpath = "{0}{1}{2}".format(self.bind_path_prefix[:-1], path, filename)
                     fsize = os.path.getsize(fpath)
 
                     # 形成若干个req uploadChunk请求
@@ -1347,8 +1357,8 @@ class Client:
 
                     # 形成req的upChunk请求之后，将task_que中的cnt和total修改
                     self.task_queue_update_cnt(taskid, 0, chunk_id)
-                    self.test_req()
-                    self.test_task()
+                    # self.test_req()
+                    # self.test_task()
 
                 else:
                     if error == 0:
@@ -1380,6 +1390,7 @@ class Client:
                                 print('[error = -1] read from socket error!')
 
                             if Done:
+                                print('修改时间！！！！')
                                 mtime = self.complete_queue[task_id]['f_mtime']
                                 os.utime(file_path, (mtime, mtime))
                             # con = self.recv_pack().decode(encoding='gbk')
@@ -1461,10 +1472,23 @@ class Client:
 
                 # 退出登陆，发送退出登陆的api
                 self.handle_logout()
+                self.sock.close()
                 exit(1)
 
-            elif io_str == "op2":
-                print('op2')
+            elif io_str == "exit":
+                self.is_die = 1
+                t_sender.join()
+                t_receiver.join()
+
+                # 按照读持久化文件的反顺序进行持久化
+                self.write_db_persistence()
+                self.write_queue_persistence()
+                self.write_bind_persistence()
+
+                # 退出登陆，发送退出登陆的api
+                self.handle_logout()
+                self.sock.close()
+                exit(1)
 
             elif io_str == "op3":
                 print('op3')

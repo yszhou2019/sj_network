@@ -416,10 +416,10 @@ def add_path_bound(path):
     return path
 
 
-def test_upload(client, m_d5):
+def test_upload(client, f_path, f_name, real_path, m_d5):
 
     # 模拟登陆
-    client.user_session = 'abc'
+    client.user_session = 'hYf5KlMB6sr02Ev4YF94tbOB8G8IUngw'
     client.user_name = 'zxh'
 
     # 模拟绑定
@@ -432,13 +432,13 @@ def test_upload(client, m_d5):
 
     # 创建upload和download的task
     # task_type, f_path, f_name, f_size, f_mtime, md5
-    f_path = '/'
-    f_name = 'test.py'
+    # f_path = '/'
+    # f_name = 'test.py'
 
     # 假设绑定的是当前目录
     client.bind_path_prefix = add_path_bound(os.path.abspath('.'))
-
-    real_path = os.path.abspath('./test.py')
+    #
+    # real_path = os.path.abspath('./test.py')
     size = os.path.getsize(real_path)
     mtime = os.path.getmtime(real_path)
     mtime = int(mtime)
@@ -474,9 +474,9 @@ def test_upload(client, m_d5):
     print('[com]', client.complete_queue)
 
 
-def test_download(client, _md5):
+def test_download(client,f_path, f_name, real_path, _md5):
     # 模拟登陆
-    client.user_session = 'abc'
+    client.user_session = 'hYf5KlMB6sr02Ev4YF94tbOB8G8IUngw'
     client.user_name = 'zxh'
 
     # 模拟绑定
@@ -490,14 +490,12 @@ def test_download(client, _md5):
     # 假设绑定的是当前目录
     client.bind_path_prefix = add_path_bound(os.path.abspath('.'))
 
-    real_path = os.path.abspath('./test.py')
+    # real_path = os.path.abspath('./test.py')
     size = os.path.getsize(real_path)
     mtime = os.path.getmtime(real_path)
     mtime = int(mtime)
     md5 = _md5
 
-    f_path = '/txtt/'
-    f_name = 'test9090.py'
     client.gen_task_download_upload('download', f_path, f_name, size, mtime, md5)
 
     # sender和recver再运行的时候，进行输出
@@ -514,16 +512,16 @@ def test_download(client, _md5):
     print('[com]', client.complete_queue)
 
 if __name__ == '__main__':
-
+    print(time.ctime(1624706304))
     client = client.Client()
-
+    # client.login_signup()
     # md5不存在，应该上传并成功
-    # test_download(client, '202107088909010')
+    # test_upload(client, '/test/', 'upload.mp4', os.path.abspath('./test/upload.mp4'), '2100708890909009900')
     # md5存在，秒传成功
     # test_upload(client, '202107010')
 
     # md5 存在，开始下载
-    test_download(client, '202107088909010')
+    test_download(client, '/test/', 'download2.mp4', os.path.abspath('./test/upload.mp4'), '2100708890909009900')
     # client.login_signup()
     # # 模拟登陆
     # client.user_session = '3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU'
