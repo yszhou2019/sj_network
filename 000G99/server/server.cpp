@@ -96,21 +96,82 @@ void remove_event(int epoll_fd, int fd){
     }
 }
 
+// typedef std::shared_ptr<Readbuf_> Rdbuf_ptr;
 struct SOCK_INFO{
     int     sock;               // client fd
     u_short client_port;
     u_int client_ip;
     int buffer_len;             // buffer中的有效字节数量
     u_char buffer[BUFFER_SIZE];
-    SOCK_INFO(int _sock, u_short _client_port, u_int _client_ip):\
-    sock(_sock), client_port(_client_port), client_ip(_client_ip), buffer_len(0) {};
+    // string type;
+    // json header;
+    SOCK_INFO(int _sock, u_short _client_port, u_int _client_ip) : sock(_sock), client_port(_client_port), client_ip(_client_ip), buffer_len(0){};
     int recv_header();          // 从指定的socket中读取一个json到缓冲区
     json parse_header(int);        // 从缓冲区中解析出一个json
     int send_header(string, json&);          // 向指定的socket发送一个json数据
     string parse_req_type();
     ssize_t sendn(const char*, ssize_t);
     ssize_t recvn(char*, ssize_t);
+    // int parse_req(Rdbuf_ptr readbuf);
 };
+
+/*
+int SOCK_INFO::parse_req(Rdbuf_ptr readbuf)
+{
+    type.clear();
+    header.clear();
+
+    static string msg;
+    char buf[1024];
+    int n;
+
+    // 首先读取，然后解析出type，也就是本次操作的类型
+    msg = "";
+    while((n = readbuf->read_until(buf, '\n')) > 0) {
+        printf("receive %d bytes\n", n);
+        buf[n] = 0;
+        msg += buf;
+        if (buf[n - 1] == '\n')
+            break;
+    }
+
+    printf("read %s", msg.c_str());
+
+    if(n < 0)
+        return n;
+    if(n == 0)
+        return 3;
+    
+    // last byte is '\n'
+    msg.resize(msg.size()-1);
+    type = msg;
+
+    // 然后读取，并解析出JSON格式的header
+    msg = "";
+
+    while((n = readbuf->read_until(buf, '\0')) > 0) {
+        buf[n] = 0;
+        msg += buf;
+        printf("msg.length()=%d", msg.length());
+        if (buf[n - 1] == '\0')
+            break;
+    }
+
+    printf("read %s", msg.c_str());
+
+    if(n < 0)
+        return n;
+    if(n == 0)
+        return 3;
+
+    printf("Parsing header...");
+    header = json::parse(msg.c_str());
+    printf("Parse header sucessfully");
+    // JSON格式的header解析完毕
+
+    return 0;
+}
+*/
 
 ssize_t SOCK_INFO::sendn(const char* buf, ssize_t len)
 {
@@ -253,9 +314,13 @@ json SOCK_INFO::parse_header(int len)
 int SOCK_INFO::send_header(string res_type, json& header)
 {
     string msg = res_type + header.dump();
+    printf("***发送res*****\n");
+    printf("%s\n", msg.c_str());
+    print_buffer((u_char *)msg.c_str(), msg.size());
     // TODO 这里应该采用writen
     // write有可能没有把数据全部发送
-    write(sock, msg.c_str(), msg.size() + 1); // 这里有 +1 多发送了尾零
+    sendn(msg.c_str(), msg.size() + 1);
+    // write(sock, msg.c_str(), msg.size() + 1); // 这里有 +1 多发送了尾零
     return 1;
 }
 
@@ -487,6 +552,15 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
         else if(events[i].events & EPOLLIN) {
             printf("进入EPOLLIN\n");
             std::shared_ptr<SOCK_INFO> sinfo = sinfos[sockfd];
+
+            // auto readbuf = std::shared_ptr<Readbuf_>(new Readbuf_(sockfd));
+            // if((sinfo->parse_req(readbuf)) != 0 ){
+            //     printf("请求非法，跳过这次请求\n");
+            //     continue;
+            // }
+
+            // string type = sinfo->type;
+            // json header = sinfo->header;
 
             string type = sinfo->parse_req_type();
             if(type == "")
@@ -1299,7 +1373,7 @@ int main(int argc, char** argv)
     };
     my_handle_option(options, 1, argc, argv);
 
-    // my_daemon(1, 1);
+    my_daemon(1, 1);
 
     Server server(serv_port, "0.0.0.0");
     server.Run();

@@ -59,7 +59,7 @@ json generate_chunks_info(ll size, int chunk_num)
  */ 
 bool sock_ready_to_read(int sock)
 {
-    printf("检查socket是否就绪\n");
+    printf("检查socket是否读就绪\n");
     fd_set rfds;
     timeval tv;
     tv.tv_sec = 1;
@@ -76,7 +76,7 @@ bool sock_ready_to_read(int sock)
 
 bool sock_ready_to_write(int sock)
 {
-    printf("检查socket是否就绪\n");
+    printf("检查socket是否写就绪\n");
     fd_set wfds;
     timeval tv;
     tv.tv_sec = 1;
