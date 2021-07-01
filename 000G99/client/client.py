@@ -755,7 +755,11 @@ class Client:
                 print('test [get_dir_res]', get_dir_res)
                 print('test [get_dir_list]', get_dir['dir_list'])
                 print(get_dir['msg'])
-                return get_dir['dir_list']
+                
+                if get_dir['dir_list'] is None:
+                    return []
+                else:
+                    return get_dir['dir_list']
         return []
 
     def handle_bind(self):
