@@ -212,14 +212,14 @@ def read_from_sock(sock, data, n):
 
 
 def sock_ready_to_write(sock):
-    rs, ws, es = select.select([], [sock], [], 1.0)
+    rs, ws, es = select.select([], [sock], [], 10.0)
     if sock in ws:
         return True
     return False
 
 
 def sock_ready_to_read(sock):
-    rs, ws, es = select.select([sock], [], [], 1.0)
+    rs, ws, es = select.select([sock], [], [], 10.0)
     if sock in rs:
         return True
     return False
@@ -260,30 +260,33 @@ def sock2file(sock, file, off, chunksize):
     """
     cnt = 0
     size = chunksize
+    file.seek(off, 0)
     # r_pipe, w_pipe = os.pipe()
     while cnt != chunksize:
         ready = sock_ready_to_read(sock)
         if not ready:
+            file.close()
             return 0
 
         # r_bytes = splice(sock.fileno(), r_pipe, offset=off, nbytes=size)
         # w_bytes = splice(w_pipe, file.fileno(), offset=off, nbytes=size)
         # print('read {0} bytes from sock, and write {1} bytes to file'.format(r_bytes, w_bytes))
         data = sock.recv(size)
-        file.seek(off)
         w_bytes = file.write(data)
         # print(data, size, w_bytes)
         if w_bytes == 0:
+            # print("w_bytes = 0，退出")
             break
         if w_bytes == -1:
+            # print("w_bytes = -1，检测到结束，退出")
+            file.close()
             return -1
         cnt += w_bytes
-        off += w_bytes
         size -= w_bytes
-
     ch = sock.recv(1)
     # while ch != b'\0':
     #     ch = sock.recv(1)
+    file.close()
     return 1
 
 
@@ -1391,7 +1394,7 @@ class Client:
                             # 解析body，将数据按照off写入本地，如果写完则需要更新mtime
                             # f = open(req_body)
                             file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], req_body['path'], req_body['filename'])
-                            f = open(file_path, 'wb+')
+                            f = open(file_path, 'rb+')
                             res = sock2file(self.sock, f, req_body['offset'], req_body['chunksize'])
                             if res == 0:
                                 print('[error = 0] current socket is not readable')
