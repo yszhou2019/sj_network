@@ -59,10 +59,9 @@ json generate_chunks_info(ll size, int chunk_num)
  */ 
 bool sock_ready_to_read(int sock)
 {
-    printf("检查socket是否读就绪\n");
     fd_set rfds;
     timeval tv;
-    tv.tv_sec = 1;
+    tv.tv_sec = 30;
     tv.tv_usec = 0;
     FD_ZERO(&rfds);
     FD_SET(sock, &rfds);
@@ -71,23 +70,25 @@ bool sock_ready_to_read(int sock)
     {
         return true;
     }
+    printf("socket 超时未读就绪\n");
     return false;
 }
 
 bool sock_ready_to_write(int sock)
 {
-    printf("检查socket是否写就绪\n");
     fd_set wfds;
     timeval tv;
-    tv.tv_sec = 1;
+    tv.tv_sec = 30;
     tv.tv_usec = 0;
     FD_ZERO(&wfds);
     FD_SET(sock, &wfds);
     int res = select(sock + 1, NULL, &wfds, NULL, &tv);
     if(FD_ISSET(sock, &wfds))
     {
+        printf("就绪\n");
         return true;
     }
+    printf("socket 超时未写就绪\n");
     return false;
 }
 
@@ -117,6 +118,7 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
 
     // socket -> data -> file
     int fd = open(filename.c_str(), O_WRONLY, 766);
+    lseek(fd, offset, SEEK_SET);
 
     ssize_t cnt = 0;
     size_t size = chunksize;
@@ -134,8 +136,11 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
             return 0;
         }
 
+        // int should_trans_bytes = (size > 4000 ? 4000 : size);
+        // ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
+        // ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE );
         ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
-        ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, size, SPLICE_F_MORE | SPLICE_F_MOVE );
+        ssize_t w_bytes = splice( pipefd[0], NULL, fd, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE );
         printf("read %ld bytes from sock, write %ld bytes to file\n", r_bytes, w_bytes);
 
         if(w_bytes == 0)
@@ -171,6 +176,7 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
 
     // file -> data -> socket
     int fd = open(filename.c_str(), O_RDONLY, 766);
+    lseek(fd, offset, SEEK_SET);
 
     ssize_t cnt = 0;
     size_t size = chunksize;
@@ -184,10 +190,14 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
             close(pipefd[0]);
             close(pipefd[1]);
             // 超出了可以忍受的时间，还没有缓冲区可以发送，就不再等待
+            printf("发送出错, 准备退出\n");
             return 0;
         }
-        
-        ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
+
+        // int should_trans_bytes = (size > 4000 ? 4000 : size);
+        // ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
+        // ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
+        ssize_t r_bytes = splice(fd, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
         ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
 
         printf("read %ld from file, write %ld bytes to sock\n", r_bytes, w_bytes);

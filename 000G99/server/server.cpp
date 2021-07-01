@@ -1212,8 +1212,18 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     //     res["msg"] = temp;
     // }
     sinfo->send_header(res_type, res);
-    send_to_socket(sinfo->sock, filename, offset, chunksize);
-        trans("uid: %d downloadChunk (md5:%s) chunk offset %ld success.", uid,md5.c_str(),offset);
+    ssize_t bytes = send_to_socket(sinfo->sock, filename, offset, chunksize);
+    printf("下载 %s 文件中...\n", md5.c_str());
+    if (bytes == 0 || bytes == -1)
+    {
+        printf("downFile %s 出错!\n", md5.c_str());
+        trans("uid: %d downloadChunk (md5:%s) chunk offset %ld failed.", uid, md5.c_str(), offset);
+    }
+    else
+    {
+        printf("downFile %s 成功!\n", md5.c_str());
+        trans("uid: %d downloadChunk (md5:%s) chunk offset %ld success.", uid, md5.c_str(), offset);
+    }
     return;
 }
 
@@ -1376,7 +1386,7 @@ int main(int argc, char** argv)
     };
     my_handle_option(options, 1, argc, argv);
 
-    my_daemon(1, 1);
+    // my_daemon(1, 1);
 
     Server server(serv_port, "0.0.0.0");
     server.Run();
