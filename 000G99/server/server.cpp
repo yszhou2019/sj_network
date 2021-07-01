@@ -58,9 +58,9 @@ using json = nlohmann::json;
 
 MYSQL* db;
 
-#define conn(...) Server::LOG("CONN", __DATE__, __TIME__, __VA_ARGS__)
-#define logger(...) Server::LOG("LOG", __DATE__, __TIME__, __VA_ARGS__)
-#define trans(...) Server::LOG("TRANSACION", __DATE__, __TIME__, __VA_ARGS__)
+#define conn(...) Server::LOG("CONN", __VA_ARGS__)
+#define logger(...) Server::LOG("LOG", __VA_ARGS__)
+#define trans(...) Server::LOG("TRANSACION", __VA_ARGS__)
 
 const int listen_Q = 20;
 const int MAX_EVENT_NUMBER = 100;
@@ -357,7 +357,7 @@ private:
     string get_filename_by_md5(const string &);
     int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
     int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
-    void LOG(const char *logLevel, const char *date, const char *time, const char *format, ...);
+    void LOG(const char *logLevel, const char *format, ...);
 
 private:
     void close_release(std::shared_ptr<SOCK_INFO> & sinfo);
@@ -476,17 +476,20 @@ string Server::get_filename_by_md5(const string& md5)
 
 void Server::LOG(
 			const char *logLevel,
-            const char *date,
-			const char *time,
             const char *format ,...)
 {
- 
-		static char output[1024]={0};
-        va_list arglst;
-        va_start(arglst,format);
-        vsnprintf(output,sizeof(output), format, arglst);
-        fprintf(log, "[%s %s] [%s] %s\n", date, time, logLevel, output);
-        va_end(arglst);
+    time_t tt = time(NULL);
+    struct tm* t= localtime(&tt);
+    char date[50];
+    char time[50];
+    sprintf(date, "%d-%02d-%02d", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
+    sprintf(time, "%02d:%02d:%02d", t->tm_hour, t->tm_min, t->tm_sec);
+    static char output[1024] = {0};
+    va_list arglst;
+    va_start(arglst, format);
+    vsnprintf(output, sizeof(output), format, arglst);
+    fprintf(log, "[%s %s] [%s] %s\n", date, time, logLevel, output);
+    va_end(arglst);
 }
 
 
