@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import hashlib
 import getpass
-import fallocate
+# import fallocate
 
 
 def add_path_bound(path):
@@ -309,6 +309,7 @@ class Client:
         self.task_id = 0
         self.table_name = 'local_file_table'
         self.mutex = threading.Lock()
+        self.update_flag = 0
 
         # 初始化客户端
         print('初始化客户端...')
@@ -574,7 +575,7 @@ class Client:
         cur = self.sql_conn.cursor()
         try:
             sql = "INSERT INTO {0} VALUES ('{1}', {2}, {3}, '{4}')".format(self.table_name, relative_path, size, mtime, md5)
-            print(sql)
+            # print(sql)
             cur.execute(sql)
             self.sql_conn.commit()
         except:
@@ -603,7 +604,7 @@ class Client:
         """
         cur = self.sql_conn.cursor()
         sql = "DELETE FROM {0} WHERE path_file_name = '{1}'".format(self.table_name, relative_path)
-        print(sql)
+        # print(sql)
         try:
             cur.execute(sql)
             self.sql_conn.commit()
@@ -752,10 +753,10 @@ class Client:
             get_dir_body = get_dir_body.split('\0')[0]
             get_dir = json.loads(get_dir_body)
             if get_dir['error'] == 0:
-                print('test [get_dir_res]', get_dir_res)
-                print('test [get_dir_list]', get_dir['dir_list'])
-                print(get_dir['msg'])
-                
+                # print('test [get_dir_res]', get_dir_res)
+                # print('test [get_dir_list]', get_dir['dir_list'])
+                # print(get_dir['msg'])
+
                 if get_dir['dir_list'] is None:
                     return []
                 else:
@@ -960,18 +961,26 @@ class Client:
         # 1.2 扫描db中的所有记录
         for db_file_path_name in db_map.keys():
             if db_file_path_name not in local_file_map.keys():
+                task_dict = {}
                 for task in self.task_queue.values():
                     task_path_name = task['f_path'] + task['f_name']
+                    task_id = task['task_id']
                     if task_path_name == db_file_path_name:
-                        task_id = task['task_id']
-                        self.task_queue.pop(task_id)
+
+                        # self.task_queue.pop(task_id)
                         req_list = list(self.req_queue.queue)
+                        print('req_1', req_list)
                         self.req_queue = queue.Queue()
                         for req in req_list:
                             req_body = req.split('\n')[1].split('\0')[0]
                             req_body = json.loads(req_body)
+                            # print('req_', req_body)
                             if req_body['taskid'] != task_id:
                                 self.req_queue.put(req)
+                    else:
+                        task_dict[task_id] = task
+
+                self.task_queue = task_dict
                 self.gen_req_deleteFile(db_file_path_name)
                 self.db_delete(db_file_path_name)
 
@@ -1205,7 +1214,7 @@ class Client:
             new_body['queueid'] = body['queueid']
 
         pack = "{0}\n{1}\0".format(head, json.dumps(new_body)).encode(encoding='gbk')
-        print('req2server:', pack)
+        # print('req2server:', pack)
         # self.sock.send(pack)
         write2sock(self.sock, pack, len(pack))
 
@@ -1261,13 +1270,13 @@ class Client:
                             # self.sock.send(b'\0')
 
                             self.res_queue[que_id] = init_req
-                            print('\n收到一份res,[res_queue]', self.res_queue)
+                            # print('\n收到一份res,[res_queue]', self.res_queue)
                         else:
                             print('<sender>:打开文件失败, {}不存在'.format(file_path))
                     else:
                         self.req2server(head, body)
                         self.res_queue[que_id] = init_req
-                        print('\n收到一份res,[res_queue]', self.res_queue)
+                        # print('\n收到一份res,[res_queue]', self.res_queue)
 
     def task_queue_update_cnt(self, task_id, cnt, total):
         self.task_queue[task_id]['cnt'] = cnt
@@ -1277,9 +1286,9 @@ class Client:
         self.task_queue[task_id]['cnt'] += 1
         if self.task_queue[task_id]['cnt'] >= self.task_queue[task_id]['total']:
             self.complete_queue[task_id] = self.task_queue.pop(task_id)
-            print('\ntask完成!\n')
-            self.test_task()
-            print(self.complete_queue)
+            # print('\ntask完成!\n')
+            # self.test_task()
+            # print(self.complete_queue)
             return True
         return False
 
@@ -1331,7 +1340,7 @@ class Client:
                     """
                     输入参数：error, msg, queueid, vfile_id
                     """
-                    print(body_json['msg'])
+                    # print(body_json['msg'])
 
                     # err=4 文件在服务器不存在，需要上传, 将res_que中的对应删除
                     req = self.res_queue.pop(que_id)
@@ -1368,12 +1377,14 @@ class Client:
                     if error == 0:
                         # 将res_que中的对应删除, 并解析得到taskid
                         req = self.res_queue.pop(que_id)
+                        # print('req!', req)
                         req_body = req.split('\n')[1].split('\0')[0]
                         req_body = json.loads(req_body)
-                        task_id = req_body['taskid']
+                        # print('req/', req_body)
 
                         # 将含有task_id的任务对应的task的cnt进行修改
                         if head == 'downloadFileRes':
+                            task_id = req_body['taskid']
                             # 对应task_que中的cnt+1
                             Done = self.task_queue_add_cnt(task_id)
 
@@ -1394,7 +1405,7 @@ class Client:
                                 print('[error = -1] read from socket error!')
 
                             if Done:
-                                print('修改时间！！！！')
+                                # print('修改时间！！！！')
                                 mtime = self.complete_queue[task_id]['f_mtime']
                                 os.utime(file_path, (mtime, mtime))
                             # con = self.recv_pack().decode(encoding='gbk')
@@ -1402,6 +1413,7 @@ class Client:
                             #                          req_body['offset'], req_body['chunksize'], con)
 
                         elif head == 'uploadFileRes' or head == 'uploadChunkRes':
+                            task_id = req_body['taskid']
                             # 对应task_que中的cnt+1
                             self.task_queue_add_cnt(task_id)
 
@@ -1409,15 +1421,15 @@ class Client:
                         # 将res_que中对应的que_id的请求再次放入req_que中
                         self.req_queue.put(self.res_queue.pop(que_id))
 
-    def sync(self):
+    def sync(self, sql_con):
         if self.is_die == 0:
             # print('aa')
-            self.not_first_sync()
+            if self.update_flag == 0:
+                self.update_flag = 1
             self.sync_timer()
 
     def sync_timer(self):
-        print(self.is_die)
-        t = threading.Timer(3, self.sync)
+        t = threading.Timer(30, self.sync)
         if self.is_die == 0:
             t.start()
         else:
@@ -1456,13 +1468,21 @@ class Client:
         # 创建线程并运行
         t_sender = threading.Thread(target=self.sender)
         t_receiver = threading.Thread(target=self.receiver)
-        t_sync_timer = threading.Thread(target=self.sync_timer)
+
+        # t_sync_timer = threading.Thread(target=self.sync_timer)
         t_sender.start()
         t_receiver.start()
-        t_sync_timer.run()
+        # t_sync_timer.run()
+
+        self.sync_timer()
 
         # 主线程处理键盘IO
         while True:
+            if self.update_flag == 1:
+                self.update_flag = 0
+                print('\n定期同步ing...')
+                self.not_first_sync()
+                continue
             io_str = input('请输入指令...')
             if io_str == "log_out":
                 self.is_die = 1
