@@ -277,7 +277,7 @@ int get_dirid(int uid, int bindid, const string& path)
 json get_file_dir(int uid, int bindid)
 {
     char query[512];
-    snprintf(query, sizeof(query), "select vf.vfile_name filename, d.dir_path path, vf.vfile_md5 md5, vf.vfile_size size, vf.vfile_mtime mtime from dir d, virtual_file vf where d.dir_id = vf.vfile_dir_id and d.dir_id in (select d.dir_id dirid from dir d where d.dir_uid = %d and d.dir_bindid = %d);", uid, bindid);
+    snprintf(query, sizeof(query), "select vf.vfile_name filename, d.dir_path path, vf.vfile_md5 md5, vf.vfile_size size, vf.vfile_mtime mtime from dir d, virtual_file vf where d.dir_id = vf.vfile_dir_id and vf.vfile_complete = 1 and d.dir_id in (select d.dir_id dirid from dir d where d.dir_uid = %d and d.dir_bindid = %d);", uid, bindid);
 
     if (mysql_query(db, query)) {
         finish_with_error(db);
@@ -669,6 +669,10 @@ bool destroy_session(const string& session)
         error_occur = true;
         finish_with_error(db);
     }
+    if( (int)mysql_affected_rows(db) != 1)
+    {
+        error_occur = true;
+    }
     
     return error_occur;
 }
@@ -690,6 +694,10 @@ bool delete_dir(int dirid)
         error_occur = true;
         finish_with_error(db);
     }
+    if( (int)mysql_affected_rows(db) != 1)
+    {
+        error_occur = true;
+    }
 
     return error_occur;
 }
@@ -709,6 +717,10 @@ bool delete_file(int dirid, const string& filename)
     if (mysql_query(db, query)) {
         error_occur = true;
         finish_with_error(db);
+    }
+    if( (int)mysql_affected_rows(db) != 1)
+    {
+        error_occur = true;
     }
 
     return error_occur;

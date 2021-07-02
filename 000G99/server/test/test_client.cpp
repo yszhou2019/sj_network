@@ -343,6 +343,21 @@ void _deleteDir(string phase, string sid, string prefix, string dirname, int qid
     end(phase);
 }
 
+void _getdir(string phase, string sid)
+{
+    start(phase);
+    string msg = phase + '\n';
+    json req = {
+        {"session", sid},
+        };
+
+    send_header(msg, req);
+    cout << phase << endl;
+    cout << req << endl;
+    recv_print();
+    end(phase);
+}
+
 
 
 
@@ -451,6 +466,9 @@ void test()
     // _downloadFile("downloadFile", "aaa", "666", 100, 100, 100); // no bind
     // _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "666", 100, 100, 100); // 应该检测到vfile中没有对应的md5文件而失败
     // _downloadFile("downloadFile", "3FslNwoD4oIg3R7Qj5ZscJS0rH0zuTPU", "777", 100, 100, 100); // 成功
+
+    // getdir
+    // _getdir("getdir", "hW2kALh9DW47UPH974AcIl7T7SP8dX2E");
 }
 
 // _login("login","root2019", "yszhou2019");

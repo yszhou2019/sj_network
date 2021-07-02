@@ -1290,10 +1290,10 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         return;
     }
 
-    bool error_occur = delete_file(bindid, filename);
+    bool error_occur = delete_file(dirid, filename);
     if(error_occur){
         res["error"] = 1;
-        res["msg"] = "delete file failed for unknown reason";
+        res["msg"] = "file already has been deleted, delete failed";
     }else{
         res["error"] = 0;
         res["msg"] = "delete file success";
@@ -1395,7 +1395,7 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     bool error_occur = delete_dir(dirid);
     if(error_occur){
         res["error"] = 1;
-        res["msg"] = "delete dir failed for unknown reason";
+        res["msg"] = "delete dir failed, dir has been deleted";
     }else{
         res["error"] = 0;
         res["msg"] = "delete dir success";
