@@ -12,6 +12,19 @@ import threading
 import hashlib
 import getpass
 # import fallocate
+import signal
+
+mid_file_ex = ['.swp', '.swpx', '.tmp', '.download']
+
+def print_info(head, errno, info):
+    print('[{0}] [err = {1}] {2}'.format(head, errno, info))
+
+
+def is_tmp_file(filename):
+    file_extension = os.path.splitext(filename)[-1]
+    if file_extension in mid_file_ex:
+        return True
+    return False 
 
 
 def add_path_bound(path):
@@ -62,12 +75,12 @@ def get_connect():
     host_, port_ = read_config('./config.cfg')
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print("try to connect to %s:%s" % (host_, port_))
+        # print("try to connect to %s:%s" % (host_, port_))
         sock.connect((host_, port_))
     except socket.error:
         print("Could not make a connection to the server")
         sys.exit(0)
-    print('connect success!')
+    # print('connect success!')
     return sock
 
 
@@ -283,11 +296,26 @@ def sock2file(sock, file, off, chunksize):
             return -1
         cnt += w_bytes
         size -= w_bytes
-    ch = sock.recv(1)
-    # while ch != b'\0':
-    #     ch = sock.recv(1)
+
+    if sock_ready_to_read(sock):
+        ch = sock.recv(1)
+
     file.close()
     return 1
+
+
+def recv_pack(sock_in):
+    res = b''
+    if sock_ready_to_read(sock_in):
+        ch = sock_in.recv(1)
+        while ch != b'\0':
+            res += ch
+            if sock_ready_to_read(sock_in):
+                ch = sock_in.recv(1)
+            else:
+                break
+        res += ch
+    return res
 
 
 class Client:
@@ -313,6 +341,7 @@ class Client:
         self.table_name = 'local_file_table'
         self.mutex = threading.Lock()
         self.update_flag = 0
+        # self.main_thread_begin = 0
 
         # 初始化客户端
         print('初始化客户端...')
@@ -332,6 +361,9 @@ class Client:
             sys.exit(0)
 
         print('connect success!\n 初始化完成！')
+
+    def handler_signal(self, signum, frame):
+            self.is_die = 1
 
     # need :
     def handle_login(self):
@@ -361,7 +393,7 @@ class Client:
         # 默认sock在调用函数之前连接成功
         # self.sock.send(login_req.encode(encoding='gbk'))
         write2sock(self.sock, login_req, len(login_req))
-        res_bytes = self.recv_pack()
+        res_bytes = recv_pack(self.sock)
         res = res_bytes.decode(encoding='gbk')
         # print(res)
 
@@ -395,7 +427,7 @@ class Client:
                 3.  成功，打印信息，返回True
                     失败，打印信息（失败原因），返回False
         """
-        print('loginout')
+        # print('loginout')
 
         d = {'session': self.user_session}
         request = "logout\n{0}\0".format(json.dumps(d))
@@ -404,28 +436,30 @@ class Client:
         request = request.encode(encoding='gbk')
         write2sock(self.sock, request, len(request))
 
-        res_bytes = self.recv_pack()
-        res = res_bytes.decode(encoding='gbk')
-
-        res_head = res.split('\n')[0]
-        res_body = res.split('\n')[1]
-        res_body = json.loads(res_body[0:-1])
-
-        if res_head == 'logoutRes':
-            if res_body['error']:
-                # 处理失败的操作
-                print('登出失败！')
-            else:
-                # 处理成功的操作
-                print('登出成功！')
-                self.user_session = ''
-                self.user_name = ''
-                self.user_pwd = ''
-                return True
-
-        # 这里统一打印错误结果
-        print(res_body['msg'])
-        return False
+        # print('\n程序已退出..')
+        # return True
+        # res_bytes = recv_pack(self.sock)
+        # res = res_bytes.decode(encoding='gbk')
+        #
+        # res_head = res.split('\n')[0]
+        # res_body = res.split('\n')[1]
+        # res_body = json.loads(res_body[0:-1])
+        #
+        # if res_head == 'logoutRes':
+        #     if res_body['error']:
+        #         # 处理失败的操作
+        #         print('登出失败！')
+        #     else:
+        #         # 处理成功的操作
+        #         print('登出成功！')
+        #         self.user_session = ''
+        #         self.user_name = ''
+        #         self.user_pwd = ''
+        #         return True
+        #
+        # # 这里统一打印错误结果
+        # print(res_body['msg'])
+        # return False
 
     def handle_signup(self):
         """
@@ -456,7 +490,7 @@ class Client:
         # self.sock.send(tmpStr.encode(encoding='gbk'))
         write2sock(self.sock, tmpStr, len(tmpStr))
 
-        result = self.recv_pack()
+        result = recv_pack(self.sock)
         print('test [sign_up_res]', result)
         resultStr = result.decode(encoding='gbk')
         resultJson = json.loads(resultStr[0:-1].split('\n')[1])
@@ -470,7 +504,7 @@ class Client:
 
     def login_signup(self):
         while True:
-            start_input = input("请输入login或者signup...")
+            start_input = input("请输入login或者signup...\n")
             if start_input == "login":
                 login_res = self.handle_login()
                 if not login_res:  # 登陆失败
@@ -549,12 +583,16 @@ class Client:
         self.sql_conn = sqlite3.connect(self.per_db_name)  # 不存在，直接创建
         self.sql_conn.row_factory = dict_factory
 
+    def db_disconnect(self):
+        self.sql_conn.close()
+
     def db_create_local_file_table(self):
         """
         函数名称：db_create_local_file_table
         函数参数：null
         函数功能：初始化client时，如果当前bind的目录没有db文件，也就是第一次连接目录时，需要创建表
         """
+        self.db_connect()
         sql_drop = "DROP TABLE IF EXISTS {0};".format(self.table_name)
         sql = """
         CREATE TABLE {0} (
@@ -568,21 +606,22 @@ class Client:
         cur = self.sql_conn.cursor()
         cur.execute(sql_drop)
         cur.execute(sql)
+        self.db_disconnect()
 
-    def db_insert(self, relative_path, size, mtime, md5):
+    def db_insert(self, sql_conn, relative_path, size, mtime, md5):
         """
         函数名称：db_insert
         函数参数：path_file_name, size, mtime, md5 (path_file_name is a relative path)
         函数功能：像数据库中插入一条数据
         """
-        cur = self.sql_conn.cursor()
+        cur = sql_conn.cursor()
         try:
-            sql = "INSERT INTO {0} VALUES ('{1}', {2}, {3}, '{4}')".format(self.table_name, relative_path, size, mtime, md5)
+            sql = "REPLACE INTO {0} VALUES ('{1}', {2}, {3}, '{4}')".format(self.table_name, relative_path, size, mtime, md5)
             # print(sql)
             cur.execute(sql)
-            self.sql_conn.commit()
+            sql_conn.commit()
         except:
-            self.sql_conn.rollback()
+            sql_conn.rollback()
 
     def db_update(self, relative_path_file, size, mtime, md5):
         """
@@ -640,7 +679,8 @@ class Client:
         req_uploadFile = "uploadFile\n{0}\0".format(json.dumps(d))
         self.req_queue.put(req_uploadFile)
 
-    def gen_req_deleteFile(self, path_file):
+    def handle_deleteFile(self, path_file):
+        new_sock = get_connect()
         que_id = self.get_que_id()
         file = path_file.split('/')[-1]
         path = path_file[0:-len(file)]
@@ -651,8 +691,12 @@ class Client:
             'path': path,
             'queueid': que_id
         }
-        req_deleteFile = "deleteFile\n{0}\0".format(json.dumps(d))
-        self.req_queue.put(req_deleteFile)
+        req_deleteFile = "deleteFile\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+        write2sock(new_sock, req_deleteFile, len(req_deleteFile))
+        delete_res = recv_pack(new_sock)
+        # print('deleteFile:', req_deleteFile)
+        # print('delete_req_res:', delete_res)
+        new_sock.close()
 
     def gen_req_download(self, f_path, f_name, f_size, md5, task_id):
         off = 0
@@ -680,6 +724,8 @@ class Client:
             off += chunk_size
             chunk_id += 1
             s -= chunk_size
+        
+        self.test_req()
         return chunk_id
 
     def gen_req_uploadChunk(self, v_id, t_id, q_id, c_id, off, size, path, filename):
@@ -713,14 +759,18 @@ class Client:
             print('can not download or upload file less than 0 byte')
             return
 
+        remote_relative_path = f_path + f_name
         if task_type == 'download':
-            create_file(self.bind_path_prefix, f_path, f_name, f_size)
-            total = self.gen_req_download(f_path, f_name, f_size, md5, task_id)
-            self.add_to_task_que(task_id, task_type, f_path, f_name, f_size, f_mtime, md5, 0, total)
+            f_d_name = f_name + '.download'
+            create_file(self.bind_path_prefix, f_path, f_d_name, f_size)
+            # 将需要下载的文件信息不需要写入db，因为是中间文件，并且扫描时不扫描中间文件
+            total = self.gen_req_download(f_path, f_d_name, f_size, md5, task_id)
+            self.add_to_task_que(task_id, task_type, f_path, f_d_name, f_size, f_mtime, md5, 0, total)
 
         elif task_type == 'upload':
             self.gen_req_uploadFile(f_path, f_name, f_size, md5, task_id, f_mtime)
             self.add_to_task_que(task_id, task_type, f_path, f_name, f_size, f_mtime, md5, 0, 1)
+            self.db_insert(self.sql_conn, relative_path=remote_relative_path, size=f_size, mtime=f_mtime, md5=md5)
 
         else:
             print('unknown task type')
@@ -742,10 +792,11 @@ class Client:
         d = {"session": self.user_session}
         getDir = "getdir\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
         # self.sock.send(getDir)
-        write2sock(self.sock, getDir, len(getDir))
-        get_dir_res = self.recv_pack()
-        # print('test [get_dir_res]')
-        # print(get_dir_res)
+
+        sock_in = get_connect()
+        write2sock(sock_in, getDir, len(getDir))
+        get_dir_res = recv_pack(sock_in)
+        sock_in.close()
 
         # 2.2 验证getDir的res
         get_dir_str = get_dir_res.decode(encoding='gbk')
@@ -766,6 +817,19 @@ class Client:
                     return get_dir['dir_list']
         return []
 
+    def handle_getbindid(self, sock):
+        d = {'session': self.user_session}
+        req_getbindid = "getbindid\n{}\0".format(json.dumps(d)).encode(encoding='gbk')
+        write2sock(sock, req_getbindid, len(req_getbindid))
+        res = recv_pack(sock).decode(encoding='gbk')
+        res_body = res.split('\n')[1].split('\0')[0]
+        res_body = json.loads(res_body)
+
+        if 1 <= res_body['bindid'] <= 3:
+            self.is_bind = res_body['bindid']
+        else:
+            self.is_bind = 0
+
     def handle_bind(self):
         """
         函数名称：handle_bind
@@ -782,7 +846,7 @@ class Client:
                 input_path = input('请再次确定本地绑定的目录:')
 
             bind_id = input('服务器可选目录：1，2，3\n请选择要绑定的目录：')
-            while int(bind_id) > 3 or int(bind_id) < 1:
+            while not bind_id.isdigit() or int(bind_id) > 3 or int(bind_id) < 1:
                 bind_id = input('服务器目录的范围：1~3，请重新选择：')
 
             # 形成setbind包，发送并解析res
@@ -791,7 +855,7 @@ class Client:
             print('test [bind_pack]', bind_pack)
             # self.sock.send(bind_pack)
             write2sock(self.sock, bind_pack, len(bind_pack))
-            bind_res = self.recv_pack().decode(encoding='gbk')
+            bind_res = recv_pack(self.sock).decode(encoding='gbk')
             print('test [bind_res]', bind_res)
 
             bind_res_body = bind_res.split('\n')[1].split('\0')[0]
@@ -817,16 +881,16 @@ class Client:
             bind_pack = "disbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
             # self.sock.send(bind_pack)
             write2sock(self.sock, bind_pack, len(bind_pack))
-            bind_res = self.recv_pack().decode(encoding='gbk')
-            print('test [bind_res]', bind_res)
+            bind_res = recv_pack(self.sock).decode(encoding='gbk')
+            # print('test [bind_res]', bind_res)
 
             bind_res_body = bind_res.split('\n')[1].split('\0')[0]
             bind_res_body = json.loads(bind_res_body)
-            print('test [bind_res_body]', bind_res_body)
+            # print('test [bind_res_body]', bind_res_body)
 
             if bind_res_body['error'] == 0:
                 print('msg:%s' % bind_res_body['msg'])
-                self.bind_path_prefix = ''
+                # self.bind_path_prefix = ''
                 break
             else:
                 print('接触绑定失败\n msg:%s' % bind_res_body['msg'])
@@ -853,37 +917,37 @@ class Client:
         函数功能：1. 进行初次同步，主要任务是下载
                 2. 操作：首先请求getDir，然后处理请求的结果
         """
+        # 连接数据库
+        self.db_connect()
 
-        print('\n...开始初次同步...')
+        # print('\n...[初次同步] 开始...')
         # 1. 扫描本地所有文件，生成所有文件以及文件夹的upload api
         # 构造local_file_map，key:"path/file_name", value:"md5"，之后与服务端对比时使用
         local_file_map = {}
         s_path = self.bind_path_prefix
-        print('\n...完成...')
 
-        print('\n...上传本地所有文件中...')
+        # print('\n...[初次同步] 上传本地所有文件中...')
         for path, dirs, files in os.walk(s_path):
-            sub_path = path[len(s_path):] + '/'
+            sub_path = '/' + path[len(s_path):] + '/'
             for file in files:
-                # 计算md5
-                # print('test', path, file)
-                # print('os_path', os.path.join(path, file))
-                relative_path = sub_path + file
-                # print('relative_path', relative_path)
-                real_path = os.path.join(path, file)
-                md5 = get_file_md5(real_path)
-                size = os.path.getsize(real_path)
-                mtime = os.path.getmtime(real_path)
-                mtime = int(mtime)
+                # 仅仅上传非中间文件
+                if not is_tmp_file(file):
+                    relative_path = sub_path + file
+                    # print('relative_path', relative_path)
+                    real_path = os.path.join(path, file)
+                    md5 = get_file_md5(real_path)
+                    size = os.path.getsize(real_path)
+                    mtime = os.path.getmtime(real_path)
+                    mtime = int(mtime)
 
-                # 生成上传任务
-                sub_path = add_path_bound(sub_path)
-                self.gen_task_download_upload(task_type='upload', f_path=sub_path, f_name=file,
-                                              f_size=size, md5=md5, f_mtime=mtime)
+                    # 生成上传任务
+                    if size > 0:
+                        sub_path = add_path_bound(sub_path)
+                        self.gen_task_download_upload(task_type='upload', f_path=sub_path, f_name=file,
+                                                    f_size=size, md5=md5, f_mtime=mtime)
 
-                # 将文件信息登记进入local_file_map
-                local_file_map[relative_path] = md5
-        print('\n...完成...')
+                    # 将文件信息登记进入local_file_map
+                    local_file_map[relative_path] = md5
 
         # 2. 请求服务端的所有数据，遍历服务端的所有数据
         # 2.1 发送getdir请求
@@ -900,88 +964,93 @@ class Client:
         """
         remote_dir_list = self.handle_getDir()
 
-        print('\n...从服务器下载所有文件中...')
+        # print('\n...[初次同步] 从服务器下载所有文件中...')
         """
         local_file_map = {"./txt": "md5", "./txt2": "md5"}
         """
         # 将local_file与remote_dir_list进行对比, 遍历服务器的每一个文件remote_file
         if remote_dir_list is not []:
-            num = len(remote_dir_list)
-            now = 0
+            # num = len(remote_dir_list)
+            # now = 0
             for remote_file in remote_dir_list:
-                now += 1
-                print('\n..当前{0}，共计{1}'.format(now, num))
+                # now += 1
+                # print('\n..当前{0}，共计{1}'.format(now, num))
                 # 在map中找到key为remote_file['filename']的项
-                remote_relative_path = remote_file['path'] + remote_file['filename']
-                local_md5 = local_file_map.get(remote_relative_path, -1)
-                # 如果本地具有同名文件
-                if local_md5 != -1:
-                    # 如果本地的同名文件的md5不同
-                    if local_md5 != remote_file['md5']:
+                if not is_tmp_file(remote_file['filename']):
+                    remote_relative_path = remote_file['path'] + remote_file['filename']
+                    local_md5 = local_file_map.get(remote_relative_path, -1)
+                    # 如果本地具有同名文件
+                    if local_md5 != -1:
+                        # 如果本地的同名文件的md5不同
+                        if local_md5 != remote_file['md5']:
+                            # task_type, f_path, f_name, f_size, md5
+                            self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
+                                                        f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
+                            
+                    else:   #没有remote_file对应的文
                         # task_type, f_path, f_name, f_size, md5
-                        self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
-                                                      f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
-                        # 将需要下载的文件信息写入db
-                        self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
-
-                else:   #没有remote_file对应的文
-                    # task_type, f_path, f_name, f_size, md5
-                    # print('f_size:', remote_file['size'])
-                    self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'], f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
-                    # 将需要下载的文件信息写入db
-                    self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
-        print('\n...完成...')
+                        # print('f_size:', remote_file['size'])
+                        self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'], f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
+                        
+        # 数据库断开连接
+        self.db_disconnect()
+        # print('\n...[初次同步] 完成...')
 
     def not_first_sync(self):
-        print('\n...开始非初次同步...')
+        # 连接数据库
+        self.db_connect()
+
+        # print('\n...[非初次同步] 开始...')
         # 1. 将本地的所有文件与db进行对比，扫描本地所有文件
         # 通过db获取本地的数据库所有的内容, 并在内存中维护一个记录db信息的map
         db_map = self.db_select()
-        # db_map = {"./txt": {"size":5, "mtime":'hhhh-yy-dd', "md1"}, "./txt2": (6, 'hhhh-yy-dd', "md2")}
+        # print(db_map)
+
+        # self.test_task()
 
         # 1.1 开始扫描本地所有文件
-        print('\n...扫描本地所有文件，上传离线新增信息中...')
+        # print('\n...[非初次同步] 扫描本地所有文件，上传新增信息中...')
         # 维护一个list或者map记录本地文件的信息（文件路径、文件名）到内存
         local_file_map = {}    # 记录文件名与对应的md5
         s_path = self.bind_path_prefix
         for path, dirs, files in os.walk(s_path):
-            sub_path = path[len(s_path):] + '/'
+            sub_path = '/' + path[len(s_path):] + '/'
             for file in files:
-                # 计算相对地址与真实地址
-                relative_path_file = sub_path + file
-                real_path = os.path.join(path, file)
+                if not is_tmp_file(file):
+                    # 计算相对地址与真实地址
+                    relative_path_file = sub_path + file
+                    real_path = os.path.join(path, file)
 
-                # 计算file的相关信息：size, mtime
-                size = os.path.getsize(real_path)
-                mtime = os.path.getmtime(real_path)
-                mtime = int(mtime)
-
-                if relative_path_file in db_map.keys():
-                    db_map_item = db_map[relative_path_file]
-                    if size == db_map_item['size'] and mtime == db_map_item['mtime']:
-                        local_file_map[relative_path_file] = db_map_item['md5']
-                    else:
-                        md5 = get_file_md5(real_path)
-                        local_file_map[relative_path_file] = md5
-                        if md5 != db_map_item['md5']:
+                    # 计算file的相关信息：size, mtime
+                    size = os.path.getsize(real_path)
+                    mtime = os.path.getmtime(real_path)
+                    mtime = int(mtime)
+                    if size > 0:
+                        if relative_path_file in db_map.keys():
+                            db_map_item = db_map[relative_path_file]
+                            if size == db_map_item['size'] and mtime == db_map_item['mtime']:
+                                local_file_map[relative_path_file] = db_map_item['md5']
+                            else:
+                                md5 = get_file_md5(real_path)
+                                local_file_map[relative_path_file] = md5
+                                if md5 != db_map_item['md5']:
+                                    self.gen_task_download_upload(task_type='upload', f_path=sub_path, f_name=file, f_size=size, f_mtime=mtime, md5=md5)
+                                self.db_update(relative_path_file=relative_path_file, size=size, mtime=mtime, md5=md5)     # need
+                        else:
+                            # 将文件信息登记进入local_file_map
+                            md5 = get_file_md5(real_path)
+                            local_file_map[relative_path_file] = md5
                             self.gen_task_download_upload(task_type='upload', f_path=sub_path, f_name=file, f_size=size, f_mtime=mtime, md5=md5)
-                        self.db_update(relative_path_file=relative_path_file, size=size, mtime=mtime, md5=md5)     # need
-                else:
-                    # 将文件信息登记进入local_file_map
-                    md5 = get_file_md5(real_path)
-                    local_file_map[relative_path_file] = md5
-                    self.gen_task_download_upload(task_type='upload', f_path=sub_path, f_name=file, f_size=size, f_mtime=mtime, md5=md5)
-                    self.db_insert(relative_path=relative_path_file, size=size, mtime=mtime, md5=md5)   # need
-        print('\n...完成...')
+                            
 
         # 1.2 扫描db中的所有记录
-        print('\n...扫描上次退出的文件记录，删除服务器多余文件中...')
-        now = 0
-        num = len(db_map.keys())
+        # print('\n...[非初次同步] 扫描上次退出的文件记录，删除服务器多余文件中...')
+        # now = 0
+        # num = len(db_map.keys())
         for db_file_path_name in db_map.keys():
-            now += 1
-            print('\n..当前{0}，共计{1}'.format(now, num))
-            if db_file_path_name not in local_file_map.keys():
+            # now += 1
+            # print('\n..当前{0}，共计{1}'.format(now, num))
+            if (not is_tmp_file(db_file_path_name)) and (db_file_path_name not in local_file_map.keys()):
                 task_dict = {}
                 for task in self.task_queue.values():
                     task_path_name = task['f_path'] + task['f_name']
@@ -990,22 +1059,24 @@ class Client:
 
                         # self.task_queue.pop(task_id)
                         req_list = list(self.req_queue.queue)
-                        print('req_1', req_list)
+                        # print('req_1', req_list)
                         self.req_queue = queue.Queue()
                         for req in req_list:
                             req_body = req.split('\n')[1].split('\0')[0]
                             req_body = json.loads(req_body)
                             # print('req_', req_body)
-                            if req_body['taskid'] != task_id:
-                                self.req_queue.put(req)
+                            if 'taskid' in req_body.keys():
+                                if req_body['taskid'] != task_id:
+                                    self.req_queue.put(req)
                     else:
                         task_dict[task_id] = task
 
                 self.task_queue = task_dict
-                self.gen_req_deleteFile(db_file_path_name)
+                self.handle_deleteFile(db_file_path_name)
                 self.db_delete(db_file_path_name)
-        print('\n...完成...')
-
+        # db_map = self.db_select()
+        # print('db2', db_map)
+        
         # 1.3 请求服务端的所有数据，遍历服务端的所有数据
         # 发送getdir请求
         remote_dir_list = self.handle_getDir()
@@ -1022,33 +1093,32 @@ class Client:
         """
         # 将local_file与remote_dir_list进行对比, 遍历服务器的每一个文件remote_file
         # print(remote_dir_list)
-        print('\n...扫描服务器所有文件，从服务器下载新文件中...')
-        now = 0
-        num = len(remote_dir_list)
-        if remote_dir_list is not []:
-            now += 1
-            print('\n..当前{0}，共计{1}'.format(now, num))
-            for remote_file in remote_dir_list:
-                # 在map中找到key为remote_file['filename']的项
-                remote_relative_path = remote_file['path'] + remote_file['filename']
-                local_md5 = local_file_map.get(remote_relative_path, -1)
-                # 如果本地具有同名文件
-                if local_md5 != -1:
-                    # 如果本地的同名文件的md5不同
-                    if local_md5 != remote_file['md5']:
-                        # task_type, f_path, f_name, f_size, f_mtime, md5
-                        self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
-                                                      f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
-                        # 将需要下载的文件信息写入db
-                        self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
+        # print('\n...[非初次同步] 扫描服务器所有文件，从服务器下载新文件中...')
 
-                else:  # 没有remote_file对应的文
-                    # task_type, f_path, f_name, f_size, md5
-                    self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
-                                                  f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
-                    # 将需要下载的文件信息写入db
-                    self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
-        print('\n...完成...')
+        if remote_dir_list is not []:
+            # now += 1
+            # print('\n..当前{0}，共计{1}'.format(now, num))
+            for remote_file in remote_dir_list:
+                if not is_tmp_file(remote_file['filename']):
+                    # 在map中找到key为remote_file['filename']的项
+                    remote_relative_path = remote_file['path'] + remote_file['filename']
+                    local_md5 = local_file_map.get(remote_relative_path, -1)
+                    # 如果本地具有同名文件
+                    if local_md5 != -1:
+                        # 如果本地的同名文件的md5不同
+                        if local_md5 != remote_file['md5']:
+                            # task_type, f_path, f_name, f_size, f_mtime, md5
+                            self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
+                                                        f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
+                            
+                    else:  # 没有remote_file对应的文
+                        # task_type, f_path, f_name, f_size, md5
+                        self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'],
+                                                    f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
+                        
+        # 数据库断开连接
+        self.db_disconnect()
+        # print('\n...[非初次同步] 完成...')
 
     def read_bind_persistence(self):
         """
@@ -1067,12 +1137,10 @@ class Client:
             f.close()
             if data:
                 json_data = json.loads(data)
-                self.is_bind = json_data['is_bind']
                 self.bind_path_prefix = json_data['path']
-            else:
-                self.is_bind = 0
-        else:
-            self.is_bind = 0
+                return True
+        return False
+
 
     def write_bind_persistence(self):
         """
@@ -1085,6 +1153,7 @@ class Client:
         """
         # 2.1 绑定信息
         per_bind_name = "{0}{1}bind".format(self.init_path, str(self.user_name))
+        # w方式每次都覆盖，符合预期
         f = open(per_bind_name, 'w')
         d = {'is_bind': self.is_bind, 'path': self.bind_path_prefix}
         d_str = json.dumps(d)
@@ -1132,7 +1201,6 @@ class Client:
                 3. 存在，并根据user_name将持久化queue读入内存，初始化queue
         """
         # 2.2 queue信息
-        print('<开始>持久化req以及task queue信息到文件')
         for v in self.res_queue.values():
             self.req_queue.put(v)
 
@@ -1146,7 +1214,7 @@ class Client:
         f = open(per_queue_name, 'w')
         f.write(d_str)
         f.close()
-        print('持久化req以及task queue信息到文件%s<结束>！' % per_queue_name)
+        # print('持久化req以及task queue信息到文件%s<结束>！' % per_queue_name)
 
     def read_db_persistence(self):
         """
@@ -1160,13 +1228,11 @@ class Client:
         # 2. 判断持久化文件是否存在（持久化文件：1.绑定信息，2.queue信息，3.db信息）
         # 2.2 db信息
         prefix = prefix_to_filename(self.bind_path_prefix)
-        self.per_db_name = "{0}{1}{2}db.db".format(self.init_path, str(self.user_name), prefix)
+        self.per_db_name = "{0}{1}{2}{3}db.db".format(self.init_path, str(self.user_name), prefix, self.is_bind)
         if not os.path.exists(self.per_db_name):
-            self.db_connect()
             self.db_create_local_file_table()
             self.first_sync()
         else:
-            self.db_connect()
             self.not_first_sync()
 
     # 有可能这个操作不需要
@@ -1308,50 +1374,45 @@ class Client:
                         # print('\n收到一份res,[res_queue]', self.res_queue)
 
     def task_queue_update_cnt(self, task_id, cnt, total):
-        self.task_queue[task_id]['cnt'] = cnt
-        self.task_queue[task_id]['total'] = total
+        if task_id in self.task_queue.keys():
+            self.task_queue[task_id]['cnt'] = cnt
+            self.task_queue[task_id]['total'] = total
 
     def task_queue_add_cnt(self, task_id):
-        self.task_queue[task_id]['cnt'] += 1
-        if self.task_queue[task_id]['cnt'] >= self.task_queue[task_id]['total']:
-            self.complete_queue[task_id] = self.task_queue.pop(task_id)
-            # print('\ntask完成!\n')
-            # self.test_task()
-            # print(self.complete_queue)
-            return True
+        
+        if task_id in self.task_queue.keys():
+            self.task_queue[task_id]['cnt'] += 1
+            if self.task_queue[task_id]['cnt'] >= self.task_queue[task_id]['total']:
+                print(self.task_queue[task_id])
+                self.complete_queue[task_id] = self.task_queue.pop(task_id)
+               
+                return True
+            print(self.task_queue[task_id])
         return False
 
-    def manage_api_download(self, Done, task_id, path, filename, offset, chunksize, file_content):
-        file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], path, filename)
-        try:
-            f = open(file_path, 'ab+')
-            f.seek(offset)
-            f.write(file_content[0:chunksize-1])
-            f.close()
-        except IOError:
-            print('<download>写入文件失败！')
+    # def manage_api_download(self, Done, task_id, path, filename, offset, chunksize, file_content):
+    #     file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], path, filename)
+    #     try:
+    #         f = open(file_path, 'ab+')
+    #         f.seek(offset)
+    #         f.write(file_content[0:chunksize-1])
+    #         f.close()
+    #     except IOError:
+    #         print('<download>写入文件失败！')
 
-        if Done:
-            mtime = self.complete_queue[task_id]['f_mtime']
-            os.utime(file_path, (mtime, mtime))
+    #     if Done:
+    #         mtime = self.complete_queue[task_id]['f_mtime']
+    #         os.utime(file_path, (mtime, mtime))
+            
 
-    def recv_pack(self):
-        res = b''
-        ch = self.sock.recv(1)
-        while ch != b'\0':
-            res += ch
-            # print(ch)
-            ch = self.sock.recv(1)
-        res += ch
-        return res
 
     # receiver进程
     def receiver(self):
         print('\n... recver begin ...')
         while self.is_die == 0:
-            rs, ws, es = select.select([self.sock], [], [])
+            rs, ws, es = select.select([self.sock], [], [], 1.0)
             if self.sock in rs:
-                init_res = self.recv_pack().decode(encoding='gbk')
+                init_res = recv_pack(self.sock).decode(encoding='gbk')
                 # print('\nrecver收到原始数据', init_res.encode())
 
                 # 解析接收数据的res头以及res_body并转化为json的dict格式
@@ -1370,7 +1431,7 @@ class Client:
                     """
                     输入参数：error, msg, queueid, vfile_id
                     """
-                    print('\n上传文件返回信息[err=4]', body_json['msg'])
+                    print_info('\nrecver', error, '上传文件返回信息：{}'.format(body_json['msg']))
 
                     # err=4 文件在服务器不存在，需要上传, 将res_que中的对应删除
                     req = self.res_queue.pop(que_id)
@@ -1378,7 +1439,8 @@ class Client:
                     req_body = req.split('\n')[1].split('\0')[0]
                     req_body = json.loads(req_body)
                     path, filename, taskid = req_body['path'], req_body['filename'], req_body['taskid']
-
+                    print_info('recver', error, '上传文件{0} {1} 返回信息：{2}'.format(path, filename, body_json['msg']))
+                    
                     # 定位文件并获取大小
                     fpath = "{0}{1}{2}".format(self.bind_path_prefix[:-1], path, filename)
                     fsize = os.path.getsize(fpath)
@@ -1400,8 +1462,7 @@ class Client:
 
                     # 形成req的upChunk请求之后，将task_que中的cnt和total修改
                     self.task_queue_update_cnt(taskid, 0, chunk_id)
-                    # self.test_req()
-                    # self.test_task()
+                    
 
                 else:
                     if error == 0:
@@ -1414,60 +1475,138 @@ class Client:
 
                         # 将含有task_id的任务对应的task的cnt进行修改
                         if head == 'downloadFileRes':
-                            print('\n下载文件返回信息[err=0]', body_json['msg'])
-                            task_id = req_body['taskid']
-                            # 对应task_que中的cnt+1
-                            Done = self.task_queue_add_cnt(task_id)
-
                             # 解析body，将数据按照off写入本地，如果写完则需要更新mtime
                             # f = open(req_body)
                             file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], req_body['path'], req_body['filename'])
                             f = open(file_path, 'rb+')
                             res = sock2file(self.sock, f, req_body['offset'], req_body['chunksize'])
                             f.close()
+
+                            print_info('recver', error, '下载文件{0} {1}返回信息:{2}'.format(req_body['path'], req_body['filename'], body_json['msg']))
+                            print(req)
+
+                            task_id = req_body['taskid']
+
                             if res == 0:
-                                print('[error = 0] current socket is not readable')
-                                if not Done:
-                                    task = self.task_queue[task_id]
-                                else:
-                                    task = self.complete_queue[task_id]
-                                self.gen_task_download_upload(task['task_type'], task['f_path'],
-                                                              task['f_name'], task['f_size'], task['f_mtime'], task['md5'])
+                                print('[receiver] [error = 0] current socket is not readable')
+                                if task_id in self.task_queue.keys():
+                                    if not Done:
+                                        task = self.task_queue[task_id]
+                                    else:
+                                        task = self.complete_queue[task_id]
+                                    self.gen_task_download_upload(task['task_type'], task['f_path'],
+                                                                    task['f_name'], task['f_size'], task['f_mtime'], task['md5'])
                             elif res == -1:
-                                print('[error = -1] read from socket error!')
+                                print_info('recver', -1, 'read from socket error!')
+                            
+                            # 对应task_que中的cnt+1
+                            Done = self.task_queue_add_cnt(task_id)
 
                             if Done:
-                                # print('修改时间！！！！')
+                                # 获取文件信息
                                 mtime = self.complete_queue[task_id]['f_mtime']
-                                os.utime(file_path, (mtime, mtime))
-                            # con = self.recv_pack().decode(encoding='gbk')
+                                size = self.complete_queue[task_id]['f_size']
+                                md5 = self.complete_queue[task_id]['md5']
+
+                                # 去掉文件下载标志
+                                real_file_path = os.path.splitext(file_path)[0]     # 去掉.download
+                                if not os.path.exists(real_file_path):
+                                    os.rename(file_path, real_file_path)
+
+                                # note!
+                                # self.test_task()
+                                if os.path.exists(file_path):
+                                    os.remove(file_path)
+                                # 修改文件mtime
+                                os.utime(real_file_path, (mtime, mtime))
+
+                                # 在db中插入正常文件
+                                tmp_sql_conn = sqlite3.connect(self.per_db_name)  # 不存在，直接创建
+                                self.db_insert(tmp_sql_conn, relative_path=real_file_path, size=size, mtime=mtime, md5=md5)
+                                tmp_sql_conn.close()
+
+                            # con = recv_pack(self.sock).decode(encoding='gbk')
                             # self.manage_api_download(Done, task_id, req_body['path'], req_body['filename'],
                             #                          req_body['offset'], req_body['chunksize'], con)
 
                         elif head == 'uploadFileRes' or head == 'uploadChunkRes':
-                            print('\n上传文件返回信息[err=0]', body_json['msg'])
+                            print_info('recver', error, '上传文件{0} {1}返回信息:{2}'.format(req_body['path'], req_body['filename'], body_json['msg']))
                             task_id = req_body['taskid']
                             # 对应task_que中的cnt+1
                             self.task_queue_add_cnt(task_id)
 
                     elif error == 1:
-                        print('\n返回信息[err=1]', body_json['msg'])
+                        print_info('recver', error, '上传文件{0} {1}返回信息:{2}'.format(req_body['path'], req_body['filename'], body_json['msg']))
                         # 将res_que中对应的que_id的请求再次放入req_que中
                         self.req_queue.put(self.res_queue.pop(que_id))
 
-    def sync(self):
-        if self.is_die == 0:
-            # print('aa')
-            if self.update_flag == 0:
-                self.update_flag = 1
-            self.sync_timer()
-
     def sync_timer(self):
-        t = threading.Timer(30, self.sync)
-        if self.is_die == 0:
-            t.start()
+        # 只是简单的产生一个定时信号，不需要精确的定时，因此可以使用sleep
+        while self.is_die == 0:
+            self.update_flag += 1
+            time.sleep(1)
+
+
+    def IO_control(self):
+        # 主线程处理键盘IO
+        while self.is_die == 0:
+            io_str = input('...请输入指令...\n')
+            print('[input] {}'.format(io_str))
+            if io_str == "logout":
+                self.is_die = 1
+
+            elif io_str == "exit":
+                self.is_die = 1
+
+            elif io_str == "op3":
+                print('op3')
+
+            else:
+                print('请检查输入的指令..')
+
+    def handle_remotebind(self):# if is_bind=0, bind; not = 0, ask if disbind
+        if self.is_bind == 0:
+            # bind remote
+            print('\n请绑定服务器目录...')
+            bind_id = input('服务器可选目录：1，2，3\n请选择要绑定的目录：')
+            while not bind_id.isdigit() or int(bind_id) > 3 or int(bind_id) < 1:
+                bind_id = input('服务器目录的范围：1~3，请重新选择：')
+
+            # 形成setbind包，发送并解析res
+            d = {"session": self.user_session, "bindid": int(bind_id)}
+            bind_pack = "setbind\n{0}\0".format(json.dumps(d)).encode(encoding='gbk')
+            # print('test [bind_pack]', bind_pack)
+            # self.sock.send(bind_pack)
+            write2sock(self.sock, bind_pack, len(bind_pack))
+            bind_res = recv_pack(self.sock).decode(encoding='gbk')
+            # print('test [bind_res]', bind_res)
+
+            bind_res_body = bind_res.split('\n')[1].split('\0')[0]
+            bind_res_body = json.loads(bind_res_body)
+            # print('test', bind_res_body)
+
+            if bind_res_body['error'] == 0:
+                self.is_bind = bind_res_body['bindid']
+                print('msg:%s' % bind_res_body['msg'])
+                return
+            else:
+                print('绑定失败,bindid:%s\n msg:%s' % (bind_res_body['bindid'], bind_res_body['msg']))
+                exit(0)
         else:
-            t.cancel()
+            # is disbind
+            res = is_cancel_bind()
+            if res:
+                self.handle_cancel_bind()
+                print('\n解除绑定成功，请重新登录')
+                exit(0)
+
+    def handle_localbind(self):
+        input_path = input('确定本地绑定的目录:')
+        while not os.path.exists(input_path):
+            print('选择的目录：%s不存在' % input_path)
+            input_path = input('请再次确定本地绑定的目录:')
+        self.bind_path_prefix = path_translate(input_path)
+        self.write_bind_persistence()
 
     def run(self):
         """
@@ -1479,17 +1618,21 @@ class Client:
         # 处理登陆和注册事件，直到登陆成功才结束函数
         self.login_signup()
 
-        # 将bind的持久化内容读取本地
-        self.read_bind_persistence()
+        # getbindid
+        self.handle_getbindid(self.sock)
 
-        # 处理绑定目录
-        is_cancel = False
-        if self.is_bind:
-            is_cancel = is_cancel_bind()
-            if is_cancel:
-                self.handle_cancel_bind()
-        if (not self.is_bind) or is_cancel:  # 目前未绑定或者绑定之后选择取消绑定
-            self.handle_bind()
+        # if is_bind=0, bind; not = 0, ask if disbind
+        self.handle_remotebind()
+
+        # 在这里bindid是>0的
+
+        # 将bind的持久化内容读取本地
+        res = self.read_bind_persistence()
+        # print(self.bind_path_prefix)
+        if not res:
+            self.handle_localbind()
+
+        signal.signal(signal.SIGINT, self.handler_signal)
 
         # 处理queue的持久化文件，如果上次未完成会再次创建队列
         self.read_queue_persistence()
@@ -1502,57 +1645,54 @@ class Client:
         # 创建线程并运行
         t_sender = threading.Thread(target=self.sender)
         t_receiver = threading.Thread(target=self.receiver)
+        t_timer = threading.Thread(target = self.sync_timer)
 
-        # t_sync_timer = threading.Thread(target=self.sync_timer)
         t_sender.start()
         t_receiver.start()
-        # t_sync_timer.run()
+        t_timer.start()
 
-        self.sync_timer()
+        t_io = threading.Thread(target=self.IO_control)
+        t_io.start()
 
-        # 主线程处理键盘IO
+        print('主线程循环开始...')
+        # 主线程处理全局响应
+        print()
         while True:
-            if self.update_flag == 1:
-                self.update_flag = 0
-                print('\n定期同步ing...')
+            # print('update_flag:', self.update_flag)
+            if self.update_flag >= 10:
                 self.not_first_sync()
-                continue
-            io_str = input('请输入指令...')
-            if io_str == "log_out":
-                self.is_die = 1
+                self.update_flag = -1
+            # print('is_die:', self.is_die)
+            # if self.update_flag == 1:
+            #     self.update_flag = 0
+            #     print('\n定期同步ing...')
+            #     self.not_first_sync()
+
+            if self.is_die == 1:
                 t_sender.join()
+                print('sender end')
                 t_receiver.join()
+                print('recv end')
+                t_io.join()
+                print('io end')
+                t_timer.join()
+                print('timer end')
 
                 # 按照读持久化文件的反顺序进行持久化
-                self.write_db_persistence()
+                # self.write_db_persistence()
                 self.write_queue_persistence()
                 self.write_bind_persistence()
+                print('persistence end')
 
                 # 退出登陆，发送退出登陆的api
                 self.handle_logout()
+                print('send log out')
+
                 self.sock.close()
-                exit(1)
+                print('close socket')
+                sys.exit(0)
 
-            elif io_str == "exit":
-                self.is_die = 1
-                t_sender.join()
-                t_receiver.join()
-
-                # 按照读持久化文件的反顺序进行持久化
-                self.write_db_persistence()
-                self.write_queue_persistence()
-                self.write_bind_persistence()
-
-                # 退出登陆，发送退出登陆的api
-                self.handle_logout()
-                self.sock.close()
-                exit(1)
-
-            elif io_str == "op3":
-                print('op3')
-
-            else:
-                print('请检查输入的指令..')
+            time.sleep(1)
 
 
 if __name__ == '__main__':
