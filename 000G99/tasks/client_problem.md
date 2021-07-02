@@ -262,3 +262,40 @@ sender和recver不能同时启动的原因：
 1. recv和send的系统调用都是不可靠的，正确的做法是将待读取和写入的数据保存到buffer中。
 2. 对于较大的数据，调用linux的零拷贝系统调用，避免过多的io
 
+
+
+# 不同之处：
+
+#### 1. 对于同名文件，认为文件已经做出更改，则覆盖原来的文件
+
+![image-20210701134731936](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210701134731936.png)
+
+
+
+# 测试文件解决方法
+
+#### 4. 异常处理
+
+##### 4.1 本机同步目录的删除		
+
+用inotify检测到删除目录的时候，先判断是不是self.bind_prefix
+
+##### 4.2 断点续传
+
+（upload）（download）
+
+暴力关client：设置信号；
+
+拔网线：if sock_ready_或者**sock检测到断开**，判断task队列是否为空
+
+（网络不通）
+
+?	（1）如果sock未连接，则不写入db
+
+?	（2）操作不变
+
+（客户端未运行）
+
+改为服务器以及B新增
+
+![image-20210701141929093](C:\Users\63450\AppData\Roaming\Typora\typora-user-images\image-20210701141929093.png)

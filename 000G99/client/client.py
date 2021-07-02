@@ -537,9 +537,9 @@ class Client:
                   for local_file in db_file}
         return db_map
 
-    def db_init(self):
+    def db_connect(self):
         """
-        函数名称：db_init
+        函数名称：db_connect
         函数参数：null
         函数功能：进行数据库的连接，并将数据库返回值设置为dict的格式
         """
@@ -854,11 +854,14 @@ class Client:
                 2. 操作：首先请求getDir，然后处理请求的结果
         """
 
+        print('\n...开始初次同步...')
         # 1. 扫描本地所有文件，生成所有文件以及文件夹的upload api
         # 构造local_file_map，key:"path/file_name", value:"md5"，之后与服务端对比时使用
         local_file_map = {}
         s_path = self.bind_path_prefix
+        print('\n...完成...')
 
+        print('\n...上传本地所有文件中...')
         for path, dirs, files in os.walk(s_path):
             sub_path = path[len(s_path):] + '/'
             for file in files:
@@ -880,6 +883,7 @@ class Client:
 
                 # 将文件信息登记进入local_file_map
                 local_file_map[relative_path] = md5
+        print('\n...完成...')
 
         # 2. 请求服务端的所有数据，遍历服务端的所有数据
         # 2.1 发送getdir请求
@@ -896,12 +900,17 @@ class Client:
         """
         remote_dir_list = self.handle_getDir()
 
+        print('\n...从服务器下载所有文件中...')
         """
         local_file_map = {"./txt": "md5", "./txt2": "md5"}
         """
         # 将local_file与remote_dir_list进行对比, 遍历服务器的每一个文件remote_file
         if remote_dir_list is not []:
+            num = len(remote_dir_list)
+            now = 0
             for remote_file in remote_dir_list:
+                now += 1
+                print('\n..当前{0}，共计{1}'.format(now, num))
                 # 在map中找到key为remote_file['filename']的项
                 remote_relative_path = remote_file['path'] + remote_file['filename']
                 local_md5 = local_file_map.get(remote_relative_path, -1)
@@ -917,18 +926,21 @@ class Client:
 
                 else:   #没有remote_file对应的文
                     # task_type, f_path, f_name, f_size, md5
-                    print('f_size:', remote_file['size'])
+                    # print('f_size:', remote_file['size'])
                     self.gen_task_download_upload(task_type='download', f_path=remote_file['path'], f_name=remote_file['filename'], f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
                     # 将需要下载的文件信息写入db
                     self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
+        print('\n...完成...')
 
     def not_first_sync(self):
+        print('\n...开始非初次同步...')
         # 1. 将本地的所有文件与db进行对比，扫描本地所有文件
         # 通过db获取本地的数据库所有的内容, 并在内存中维护一个记录db信息的map
         db_map = self.db_select()
         # db_map = {"./txt": {"size":5, "mtime":'hhhh-yy-dd', "md1"}, "./txt2": (6, 'hhhh-yy-dd', "md2")}
 
         # 1.1 开始扫描本地所有文件
+        print('\n...扫描本地所有文件，上传离线新增信息中...')
         # 维护一个list或者map记录本地文件的信息（文件路径、文件名）到内存
         local_file_map = {}    # 记录文件名与对应的md5
         s_path = self.bind_path_prefix
@@ -960,9 +972,15 @@ class Client:
                     local_file_map[relative_path_file] = md5
                     self.gen_task_download_upload(task_type='upload', f_path=sub_path, f_name=file, f_size=size, f_mtime=mtime, md5=md5)
                     self.db_insert(relative_path=relative_path_file, size=size, mtime=mtime, md5=md5)   # need
+        print('\n...完成...')
 
         # 1.2 扫描db中的所有记录
+        print('\n...扫描上次退出的文件记录，删除服务器多余文件中...')
+        now = 0
+        num = len(db_map.keys())
         for db_file_path_name in db_map.keys():
+            now += 1
+            print('\n..当前{0}，共计{1}'.format(now, num))
             if db_file_path_name not in local_file_map.keys():
                 task_dict = {}
                 for task in self.task_queue.values():
@@ -986,6 +1004,7 @@ class Client:
                 self.task_queue = task_dict
                 self.gen_req_deleteFile(db_file_path_name)
                 self.db_delete(db_file_path_name)
+        print('\n...完成...')
 
         # 1.3 请求服务端的所有数据，遍历服务端的所有数据
         # 发送getdir请求
@@ -1002,8 +1021,13 @@ class Client:
         {}]
         """
         # 将local_file与remote_dir_list进行对比, 遍历服务器的每一个文件remote_file
-        print(remote_dir_list)
+        # print(remote_dir_list)
+        print('\n...扫描服务器所有文件，从服务器下载新文件中...')
+        now = 0
+        num = len(remote_dir_list)
         if remote_dir_list is not []:
+            now += 1
+            print('\n..当前{0}，共计{1}'.format(now, num))
             for remote_file in remote_dir_list:
                 # 在map中找到key为remote_file['filename']的项
                 remote_relative_path = remote_file['path'] + remote_file['filename']
@@ -1024,6 +1048,7 @@ class Client:
                                                   f_size=remote_file['size'], f_mtime=remote_file['mtime'], md5=remote_file['md5'])
                     # 将需要下载的文件信息写入db
                     self.db_insert(relative_path=remote_relative_path, size=remote_file['size'], mtime=remote_file['mtime'], md5=remote_file['md5'])
+        print('\n...完成...')
 
     def read_bind_persistence(self):
         """
@@ -1137,11 +1162,11 @@ class Client:
         prefix = prefix_to_filename(self.bind_path_prefix)
         self.per_db_name = "{0}{1}{2}db.db".format(self.init_path, str(self.user_name), prefix)
         if not os.path.exists(self.per_db_name):
-            self.db_init()
+            self.db_connect()
             self.db_create_local_file_table()
             self.first_sync()
         else:
-            self.db_init()
+            self.db_connect()
             self.not_first_sync()
 
     # 有可能这个操作不需要
@@ -1260,6 +1285,7 @@ class Client:
                             # now_read = 0
                             f = open(file_path, 'rb')
                             file2sock(self.sock, f, off, size)
+                            f.close()
                             # while now_read < size:
                             #     f.seek(off + now_read)
                             #     data = f.read(size - now_read)
@@ -1301,6 +1327,7 @@ class Client:
             f = open(file_path, 'ab+')
             f.seek(offset)
             f.write(file_content[0:chunksize-1])
+            f.close()
         except IOError:
             print('<download>写入文件失败！')
 
@@ -1343,7 +1370,7 @@ class Client:
                     """
                     输入参数：error, msg, queueid, vfile_id
                     """
-                    # print(body_json['msg'])
+                    print('\n上传文件返回信息[err=4]', body_json['msg'])
 
                     # err=4 文件在服务器不存在，需要上传, 将res_que中的对应删除
                     req = self.res_queue.pop(que_id)
@@ -1387,6 +1414,7 @@ class Client:
 
                         # 将含有task_id的任务对应的task的cnt进行修改
                         if head == 'downloadFileRes':
+                            print('\n下载文件返回信息[err=0]', body_json['msg'])
                             task_id = req_body['taskid']
                             # 对应task_que中的cnt+1
                             Done = self.task_queue_add_cnt(task_id)
@@ -1396,6 +1424,7 @@ class Client:
                             file_path = "{0}{1}{2}".format(self.bind_path_prefix[:-1], req_body['path'], req_body['filename'])
                             f = open(file_path, 'rb+')
                             res = sock2file(self.sock, f, req_body['offset'], req_body['chunksize'])
+                            f.close()
                             if res == 0:
                                 print('[error = 0] current socket is not readable')
                                 if not Done:
@@ -1416,11 +1445,13 @@ class Client:
                             #                          req_body['offset'], req_body['chunksize'], con)
 
                         elif head == 'uploadFileRes' or head == 'uploadChunkRes':
+                            print('\n上传文件返回信息[err=0]', body_json['msg'])
                             task_id = req_body['taskid']
                             # 对应task_que中的cnt+1
                             self.task_queue_add_cnt(task_id)
 
                     elif error == 1:
+                        print('\n返回信息[err=1]', body_json['msg'])
                         # 将res_que中对应的que_id的请求再次放入req_que中
                         self.req_queue.put(self.res_queue.pop(que_id))
 
