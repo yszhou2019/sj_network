@@ -145,8 +145,11 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
         // int should_trans_bytes = (size > 4000 ? 4000 : size);
         // ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
         // ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE );
-        ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
-        ssize_t w_bytes = splice( pipefd[0], NULL, fd, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE );
+        printf("sock ready\n");
+        ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
+        printf("read sock to pipe\n");
+        ssize_t w_bytes = splice( pipefd[0], NULL, fd, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK );
+        printf("read pipe to file\n");
         printf("read %ld bytes from sock, write %ld bytes to file\n", r_bytes, w_bytes);
 
         if(w_bytes == 0)
@@ -203,8 +206,11 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
         // int should_trans_bytes = (size > 4000 ? 4000 : size);
         // ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
         // ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
-        ssize_t r_bytes = splice(fd, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
-        ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE);
+        printf("sock ready\n");
+        ssize_t r_bytes = splice(fd, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
+        printf("read file to pipe\n");
+        ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
+        printf("read pipe to socket\n");
 
         printf("read %ld from file, write %ld bytes to sock\n", r_bytes, w_bytes);
         if(w_bytes == 0)
