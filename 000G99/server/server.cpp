@@ -317,7 +317,6 @@ int SOCK_INFO::send_header(string res_type, json& header)
     printf("***发送res*****\n");
     printf("%s\n", msg.c_str());
     print_buffer((u_char *)msg.c_str(), msg.size());
-    // TODO 这里应该采用writen
     // write有可能没有把数据全部发送
     sendn(msg.c_str(), msg.size() + 1);
     // write(sock, msg.c_str(), msg.size() + 1); // 这里有 +1 多发送了尾零
@@ -452,7 +451,7 @@ public:
 
 void Server::readConf()
 {
-    string conf_file = "/home/G1752240/u1752240.conf";
+    string conf_file = "/home/G1752240_new/u1752240_new.conf";
     // std::cout << conf_file << endl;
     db_ip = "127.0.0.1";
     db_name = "db1752240";
@@ -919,6 +918,7 @@ void Server::getdir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
  * 详细描述：请求 {session, queueid, filename, path, md5, size, mtime } -> 响应 {error, msg, queueid }
  *             -> 下载成功，响应 {error, msg, queueid }
  *             -> 下载失败，响应 {error, msg, queueid, vfile_id }
+ * TODO 上传失败，应该告知md5，而不是vid
  */ 
 void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
@@ -940,8 +940,99 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     if(bindid == 0 || bindid == -1)
         return;
 
+
+    // 无论 秒传与否， 都需要更新对应的文件记录 或者 增加文件记录
+    
+    // 根据 md5 判断文件是否存在，是否需要秒传
+    // TODO 秒传的逻辑应该是，在pfile中找到匹配的md5，并且验证complete=1，如果是那么秒传，否则需要客户端上传
+    // TODO 如果pfile对应的记录不存在，=> 添加pfile记录， 如果pfile complete=0，那么不再添加记录
+    // TODO chunks_info, complete字段 均应当存入pfile的字段中，不再作为vfile的字段
+    // TODO 然后判断实体文件是否存在，不存在则创建并分配空间，存在则不再创建
+
+
+    // 首先从 pfile 表中根据md5查找是否存在文件，以及文件是否上传完毕
+    json pinfo = if_pfile_complete(md5);
+    int pid = pinfo["pid"].get<int>();
+    int complete = pinfo["complete"].get<int>();
+
+    bool error_occur = false;
+    if (pid != -1 && complete == 1)
+    {
+        // 实体文件存在，并且上传完毕，可以进行秒传
+        // refcnt++
+        error_occur = increase_pfile_refcnt(pid);
+        if(error_occur){
+            printf("refcnt++ 失败\n");
+            res["error"] = 1;
+            res["msg"] = "DB operate failed, need to retry";
+            sinfo->send_header(res_type, res);
+            return;
+        }
+
+        res["error"] = 0;
+        res["msg"] = "lightning transfer success";
+        // 秒传成功
+        trans("uid: %d uploadFile (md5:%s) lightning transfer success.", uid, md5.c_str());
+    }
+    else if (pid != -1 && complete == 0)
+    {
+        // 实体文件存在，但是没有上传完毕，仍然需要上传
+        // refcnt++
+        error_occur = increase_pfile_refcnt(pid);
+        if(error_occur){
+            printf("refcnt++ 失败\n");
+            sinfo->send_header(res_type, res);
+            return;
+        }
+
+        // 需要上传
+        res["error"] = 4;
+        res["msg"] = "need to upload";
+        trans("uid: %d uploadFile (md5:%s) exist, but not complete, so still need to upload.", uid, md5.c_str());
+    }
+    else
+    {
+        // 实体文件不存在，需要上传
+
+        // 根据md5，按照格式生成实际物理文件名称
+        // string pname = generate_pname_by_md5(md5);
+        string name = get_filename_by_md5(md5);
+
+        // 创建文件并分配空间
+        bool create_file_fail = create_file_allocate_space(name, size);
+        if(create_file_fail){
+            res["error"] = 1;
+            res["msg"] = "server create file failed for short of space";
+            sinfo->send_header(res_type, res);
+            return;
+        }
+
+        // 生成chunks信息
+        int total = get_chunks_num(size);
+        json chunks_info = generate_chunks_info(size, total);
+
+        // 在pfile表中添加记录
+        error_occur = create_pfile(md5, chunks_info.dump(4), total);
+        if(create_file_fail){
+            res["error"] = 1;
+            res["msg"] = "server create file failed for short of space";
+            sinfo->send_header(res_type, res);
+            return;
+        }
+
+        // 需要上传
+        res["error"] = 4;
+        res["msg"] = "need to upload";
+        trans("uid: %d uploadFile (md5:%s) not exist, so need to upload.", uid,md5.c_str());
+    }
+
+    // 至此，pfile表维护完毕，并且对应的物理文件必定存在
+
+    // 下面开始维护vfile表
+
     int dirid = get_dirid(uid, bindid, path);
     bool create_dir = false;
+
     // 如果目录不存在，那么就逐级创建目录
     if (dirid == -1)
     {
@@ -957,111 +1048,157 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         }
     }
 
-    // 无论 秒传与否， 都需要更新对应的文件记录 或者 增加文件记录
-    
-    // 根据 md5 判断文件是否存在，是否需要秒传
-    string pfile = get_filename_by_md5(md5);
-    bool file_exist = if_file_exist(pfile);
-    // std::cout << "*************" << file_exist << "*************" << endl;
-    if (file_exist)
+    // 获取文件信息(vid, md5)
+    json vinfo = get_vinfo(dirid, filename);
+    int vid = vinfo["vid"].get<int>();
+    string md5_old = vinfo["md5"].get<string>();
+
+    int total = get_chunks_num(size);
+
+    error_occur = false;
+
+    // 虚拟目录不存在 -> 创建目录 -> 添加记录到 vfile 表中
+    // 虚拟文件不存在 -> 添加记录到 vfile 表中
+    if(create_dir || vid == -1)
     {
-        // 秒传
-        res["error"] = 0;
-        res["msg"] = "lightning transfer success";
-
-        // 获取文件信息(vid, md5)
-        json vinfo = get_vinfo(dirid, filename);
-        int vid = vinfo["vid"].get<int>();
-        string md5_old = vinfo["md5"].get<string>();
-
-        int total = get_chunks_num(size);
-
-        bool error_occur = false;
-
-        // 目录不存在 -> 创建目录 -> insert ( md5 对应的文件 refcnt++ )-> 秒传
-        // 文件不存在 -> insert ( md5 对应的文件 refcnt++ )-> 秒传
-        if(create_dir || vid == -1)
-        {
         // std::cout << "************ create_vfile ***********" << endl;
-            vid = create_vfile(dirid, filename, size, md5, mtime, "", total, total, 1);
-            error_occur = (vid == -1 ? true : false);
-        }
-        else if(md5 != md5_old)
-        {
-        // 文件存在 但是 md5 变化 -> update ( 旧 md5对应的文件 refcnt--, 新md5对应的 refcnt++ )-> 秒传
+        vid = create_vfile_new(dirid, filename, size, md5, mtime);
+        error_occur = (vid == -1 ? true : false);
+    }
+    // 虚拟文件存在 -> 更新虚拟文件的信息
+    else if(md5 != md5_old)
+    {
+        // 旧 md5对应的文件 refcnt--
         // std::cout << "************ update_vfile_whole ***********" << endl;
-            error_occur = update_vfile_whole(vid, md5, "", size, mtime, total, total, 1);
-        }
-        else
-        {
-        // 文件存在并且md5 不变 -> 直接秒传
-        }
+        error_occur = update_vfile_whole_new(vid, md5, size, mtime);
+        decrease_pfile_refcnt_by_md5(md5_old);
+    }
+    else
+    {
+        // 文件存在并且md5 不变 -> 不需要更新 vfile
+    }
 
-        if(error_occur){
-            res["error"] = 1;
-            res["msg"] = "DB operate failed, need to retry";
-        }else{
-            
-        trans("uid: %d uploadFile (md5:%s) lightning transfer success.", uid,md5.c_str());
-        }
-    }else{
-
-        // 需要上传
-        res["error"] = 4;
-        res["msg"] = "need to upload";
-
-        // 创建文件分配空间 ( pfile: md5对应的 insert, refcnt = 1 )
-        // TODO pfile
-
-        // 实际文件不存在，那么创建文件并分配空间
-        bool create_file_fail = create_file_allocate_space(pfile, size);
-        if(create_file_fail){
-            res["error"] = 1;
-            res["msg"] = "server create file failed for short of space";
-            sinfo->send_header(res_type, res);
-            return;
-        }
-
-        // 生成chunks信息
-        int total = get_chunks_num(size);
-        json chunks_info = generate_chunks_info(size, total);
-
-        // 判断文件存在
-
-        // 获取虚拟文件的 vid
-        int vid = get_vid(dirid, filename);
-
-        bool error_occur = false;
-
-        // 目录不存在 -> 创建目录 -> insert
-        // 文件不存在 -> insert
-        if(create_dir || vid == -1)
-        {
-            // 对应的目录中不存在虚拟文件，需要新增
-            vid = create_vfile(dirid, filename, size, md5, mtime, chunks_info.dump(4), 0, total, 0);
-            error_occur = (vid == -1 ? true : false);
-        }
-        else
-        {
-        // 文件存在 -> update
-            // 对应的目录中存在虚拟文件，需要更新
-            error_occur = update_vfile_whole(vid, md5, chunks_info.dump(4), size, mtime, 0, total, 0);
-        }
-
-        if(error_occur){
-            res["error"] = 1;
-            res["msg"] = "create_vfile or update_vfile failed";
-        }
-        else
-        {
-            res["error"] = 4;
-            res["msg"] = "need to upload this file";
-            res["vfile_id"] = vid;
-        }
-        trans("uid: %d uploadFile (md5:%s) need to upload.", uid,md5.c_str());
+    if(error_occur){
+        res["error"] = 1;
+        res["msg"] = "create_vfile or update_vfile failed";
+    }
+    else
+    {
+        // res["error"] = 4;
+        // res["msg"] = "need to upload this file";
+        // TODO 这里响应vid，设计的不好，应该是md5，采用vid多了一次查表
+        // TODO uploadFile的2个API，uploadFile-res不应该响应vid
+        // TODO uploadChunk-req不应该发送vid
+        res["vfile_id"] = vid;
     }
     sinfo->send_header(res_type, res);
     return;
+    
+    // string pfile = get_filename_by_md5(md5);
+    // bool file_exist = if_file_exist(pfile);
+    // // std::cout << "*************" << file_exist << "*************" << endl;
+    // if (file_exist)
+    // {
+    //     // 秒传
+    //     res["error"] = 0;
+    //     res["msg"] = "lightning transfer success";
+
+    //     // 获取文件信息(vid, md5)
+    //     json vinfo = get_vinfo(dirid, filename);
+    //     int vid = vinfo["vid"].get<int>();
+    //     string md5_old = vinfo["md5"].get<string>();
+
+    //     int total = get_chunks_num(size);
+
+    //     bool error_occur = false;
+
+    //     // 目录不存在 -> 创建目录 -> insert ( md5 对应的文件 refcnt++ )-> 秒传
+    //     // 文件不存在 -> insert ( md5 对应的文件 refcnt++ )-> 秒传
+    //     if(create_dir || vid == -1)
+    //     {
+    //     // std::cout << "************ create_vfile ***********" << endl;
+    //         vid = create_vfile(dirid, filename, size, md5, mtime, "", total, total, 1);
+    //         error_occur = (vid == -1 ? true : false);
+    //     }
+    //     else if(md5 != md5_old)
+    //     {
+    //     // 文件存在 但是 md5 变化 -> update ( 旧 md5对应的文件 refcnt--, 新md5对应的 refcnt++ )-> 秒传
+    //     // std::cout << "************ update_vfile_whole ***********" << endl;
+    //         error_occur = update_vfile_whole(vid, md5, "", size, mtime, total, total, 1);
+    //     }
+    //     else
+    //     {
+    //     // 文件存在并且md5 不变 -> 直接秒传
+    //     }
+
+    //     if(error_occur){
+    //         res["error"] = 1;
+    //         res["msg"] = "DB operate failed, need to retry";
+    //     }else{
+            
+    //     trans("uid: %d uploadFile (md5:%s) lightning transfer success.", uid,md5.c_str());
+    //     }
+    // }else{
+
+    //     // 需要上传
+    //     res["error"] = 4;
+    //     res["msg"] = "need to upload";
+
+    //     // 创建文件分配空间 ( pfile: md5对应的 insert, refcnt = 1 )
+    //     // TODO pfile
+
+    //     // 实际文件不存在，那么创建文件并分配空间
+    //     bool create_file_fail = create_file_allocate_space(pfile, size);
+    //     if(create_file_fail){
+    //         res["error"] = 1;
+    //         res["msg"] = "server create file failed for short of space";
+    //         sinfo->send_header(res_type, res);
+    //         return;
+    //     }
+
+    //     // 生成chunks信息
+    //     int total = get_chunks_num(size);
+    //     json chunks_info = generate_chunks_info(size, total);
+
+    //     // 判断文件存在
+    //     // TODO 判断vfile是否存在，如果不存在，那么添加记录；如果存在，那么进行更新
+
+    //     // 获取虚拟文件的 vid
+    //     int vid = get_vid(dirid, filename);
+
+    //     bool error_occur = false;
+
+    //     // 目录不存在 -> 创建目录 -> insert
+    //     // 文件不存在 -> insert
+    //     if(create_dir || vid == -1)
+    //     {
+    //         // 对应的目录中不存在虚拟文件，需要新增
+    //         // TODO vfile中不再需要记录 chunks_info cnt total complete
+    //         vid = create_vfile(dirid, filename, size, md5, mtime, chunks_info.dump(4), 0, total, 0);
+    //         error_occur = (vid == -1 ? true : false);
+    //     }
+    //     else
+    //     {
+    //     // 文件存在 -> update
+    //         // 对应的目录中存在虚拟文件，需要更新
+    //         // TODO vfile中不再需要记录 chunks_info cnt total complete
+    //         error_occur = update_vfile_whole(vid, md5, chunks_info.dump(4), size, mtime, 0, total, 0);
+    //     }
+
+    //     if(error_occur){
+    //         res["error"] = 1;
+    //         res["msg"] = "create_vfile or update_vfile failed";
+    //     }
+    //     else
+    //     {
+    //         res["error"] = 4;
+    //         res["msg"] = "need to upload this file";
+    //         res["vfile_id"] = vid;
+    //     }
+    //     trans("uid: %d uploadFile (md5:%s) need to upload.", uid,md5.c_str());
+    // }
+
+
 }
 
 /**
@@ -1071,7 +1208,8 @@ void Server::uploadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
  * 详细描述：请求 {session, vfile_id, queueid, chunkid, offset, chunksize} 
  *             -> 上传成功，响应 {error, msg, queueid }
  *             -> 上传失败，响应 {error, msg, queueid }
- * 
+ * TODO 应该告知md5，不需要vid
+ * TODO 需要添加一个md5，vid保留着暂时
  */ 
 void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
 {
@@ -1093,9 +1231,13 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         return;
 
     // 2. 根据vfile_id获取对应文件的信息5, 判断chunkid对应的chunks是否传输完成
-    json vfile = get_vfile_upload_info(vfile_id);
+    // TODO 根据md5找到pid的相关信息
+    string md5 = get_vfile_md5(vfile_id);
+    json pfile = get_pfile_info(md5);
+    int pid = pfile["pid"].get<int>();
+    // json vfile = get_vfile_upload_info(vfile_id);
 
-    string chunks_string = vfile["chunks"].get<string>();
+    string chunks_string = pfile["chunks"].get<string>();
     std::vector<std::vector<int>> chunks = json::parse(chunks_string);
     // std::vector<std::vector<int>> chunks = json::parse(chunks_string).get<std::vector<std::vector<int>>>();
     // json chunks = json::parse(vfile["chunks"].get<string>());
@@ -1113,7 +1255,9 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     }
 
     // 根据md5找到对应的文件
-    string md5 = vfile["md5"];
+    // string md5 = vfile["md5"];
+    // string filename = get_filename_by_md5(md5);
+    // string md5 = pfile["md5"];
     string filename = get_filename_by_md5(md5);
 
     // 进行传输
@@ -1126,21 +1270,23 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["msg"] = "upload success";
 
         // 更新对应的文件记录，更新 chunks, cnt, complete
+        // TODO 更新pfile的相关信息
 
         // 更新 chunks 字段
         chunks[chunkid][2] = 1;
         // vfile["chunks"] = chunks.dump(4);
 
         // 更新 cnt 字段
-        int cnt = vfile["cnt"];
+        int cnt = pfile["cnt"];
         cnt++;
         // vfile["cnt"] = cnt + 1;
 
         // 更新 complete 
-        int total = vfile["total"];
+        int total = pfile["total"];
         // vfile["complete"] = (cnt == total ? 1 : 0);
 
-        update_vfile_upload_progress(vfile_id, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
+        update_pfile_upload_progress(pid, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
+        // update_vfile_upload_progress(vfile_id, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
         trans("uid: %d uploadChunk (md5:%s) chunkid %d success.", uid,md5.c_str(),chunkid);
     }
     else
@@ -1224,6 +1370,7 @@ void Server::downloadFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         return;
 
     string md5 = header["md5"];
+    // string filename = get_pname_by_md5(md5);
     string filename = get_filename_by_md5(md5);
     loff_t offset = header["offset"].get<loff_t>();
     size_t chunksize = header["chunksize"].get<size_t>();
@@ -1290,15 +1437,27 @@ void Server::deleteFile(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         return;
     }
 
-    bool error_occur = delete_file(dirid, filename);
-    if(error_occur){
+    json vinfo = get_vinfo(dirid, filename);
+    
+    int vid = vinfo["vid"].get<int>();
+    string md5 = vinfo["md5"].get<string>();
+    if(vid != -1){
+        bool error_occur = delete_file(dirid, filename);
+        decrease_pfile_refcnt_by_md5(md5);
+        if(error_occur){
+            res["error"] = 1;
+            res["msg"] = "file already has been deleted, delete failed";
+        }else{
+            res["error"] = 0;
+            res["msg"] = "delete file success";
+            trans("uid: %d delete file %s success.", uid,filename.c_str());
+        }
+    }else{
         res["error"] = 1;
         res["msg"] = "file already has been deleted, delete failed";
-    }else{
-        res["error"] = 0;
-        res["msg"] = "delete file success";
-        trans("uid: %d delete file %s success.", uid,filename.c_str());
     }
+
+
     sinfo->send_header(res_type, res);
     return;
 }

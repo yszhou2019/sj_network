@@ -55,6 +55,11 @@ json generate_chunks_info(ll size, int chunk_num)
     return res;
 }
 
+// string generate_pname_by_md5(const string md5)
+// {
+//     return md5;
+// }
+
 /**
  * 最多等待1秒
  */ 
@@ -235,13 +240,6 @@ bool create_file_allocate_space(const string& filename, ll size)
     return res != 0 ;
 }
 
-/**
- * 判断文件是否存在
- */ 
-bool if_file_exist(const string& filename)
-{
-    return access(filename.c_str(), F_OK) == 0;
-}
 
 
 /**
@@ -313,55 +311,64 @@ void discard_extra(int sock, size_t chunksize)
 //==========================================
 // deprecated
 
-// 回答，应该采用readn和writen，因为本身在loop前执行过epoll_wait了，而且不同的操作类型是不一样的，不能像http server那样
-int        /* Read "n" bytes from a descriptor */
-readn(int fd, u_char *ptr, int n)
-{
-    int     nleft;
-    int    nread;
+// // 回答，应该采用readn和writen，因为本身在loop前执行过epoll_wait了，而且不同的操作类型是不一样的，不能像http server那样
+// int        /* Read "n" bytes from a descriptor */
+// readn(int fd, u_char *ptr, int n)
+// {
+//     int     nleft;
+//     int    nread;
 
-    nleft = n;
-    while (nleft > 0)
-    {
-        if ((nread = read(fd, ptr, nleft)) < 0)
-        {
-            if (nleft == n)
-                return(-1);    /* error, return -1 */
-            else
-                break;        /* error, return amount read so far */
-        }
-        else if (nread == 0)
-        {
-            break;            /* EOF */
-        }
-        nleft -= nread;
-        ptr   += nread;
-    }
-    return(n - nleft);             /* return >= 0 */
-}
+//     nleft = n;
+//     while (nleft > 0)
+//     {
+//         if ((nread = read(fd, ptr, nleft)) < 0)
+//         {
+//             if (nleft == n)
+//                 return(-1);    /* error, return -1 */
+//             else
+//                 break;        /* error, return amount read so far */
+//         }
+//         else if (nread == 0)
+//         {
+//             break;            /* EOF */
+//         }
+//         nleft -= nread;
+//         ptr   += nread;
+//     }
+//     return(n - nleft);             /* return >= 0 */
+// }
 
-int        /* Write "n" bytes to a descriptor */
-writen(int fd, const u_char *ptr, int n)
-{
-    int    nleft;
-    int   nwritten;
+// int        /* Write "n" bytes to a descriptor */
+// writen(int fd, const u_char *ptr, int n)
+// {
+//     int    nleft;
+//     int   nwritten;
 
-    nleft = n;
-    while (nleft > 0)
-    {
-        if ((nwritten = write(fd, ptr, nleft)) < 0)
-        {
-            if (nleft == n)
-                return(-1);    /* error, return -1 */
-            else
-                break;        /* error, return amount written so far */
-        }
-        else if (nwritten == 0)
-        {
-            break;            
-        }
-        nleft -= nwritten;
-        ptr   += nwritten;
-    }
-    return(n - nleft);    /* return >= 0 */
-}
+//     nleft = n;
+//     while (nleft > 0)
+//     {
+//         if ((nwritten = write(fd, ptr, nleft)) < 0)
+//         {
+//             if (nleft == n)
+//                 return(-1);    /* error, return -1 */
+//             else
+//                 break;        /* error, return amount written so far */
+//         }
+//         else if (nwritten == 0)
+//         {
+//             break;            
+//         }
+//         nleft -= nwritten;
+//         ptr   += nwritten;
+//     }
+//     return(n - nleft);    /* return >= 0 */
+// }
+
+
+// /**
+//  * 判断文件是否存在
+//  */ 
+// bool if_file_exist(const string& filename)
+// {
+//     return access(filename.c_str(), F_OK) == 0;
+// }

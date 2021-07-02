@@ -277,7 +277,7 @@ int get_dirid(int uid, int bindid, const string& path)
 json get_file_dir(int uid, int bindid)
 {
     char query[512];
-    snprintf(query, sizeof(query), "select vf.vfile_name filename, d.dir_path path, vf.vfile_md5 md5, vf.vfile_size size, vf.vfile_mtime mtime from dir d, virtual_file vf where d.dir_id = vf.vfile_dir_id and vf.vfile_complete = 1 and d.dir_id in (select d.dir_id dirid from dir d where d.dir_uid = %d and d.dir_bindid = %d);", uid, bindid);
+    snprintf(query, sizeof(query), "select vf.vfile_name filename, d.dir_path path, vf.vfile_md5 md5, vf.vfile_size size, vf.vfile_mtime mtime from dir d, virtual_file vf, physical_file pf where d.dir_id = vf.vfile_dir_id and vf.vfile_md5 = pf.pfile_md5 and pf.pfile_complete = 1 and d.dir_id in (select d.dir_id dirid from dir d where d.dir_uid = %d and d.dir_bindid = %d);", uid, bindid);
 
     if (mysql_query(db, query)) {
         finish_with_error(db);
@@ -343,43 +343,7 @@ json get_vinfo(int dirid, const string& filename)
     return res;
 }
 
-/**
- * 根据 dirid 和 filename 查找对应文件的信息
- * 文件不存在，返回 { vid -1 }
- * 文件存在，返回 { chunks, md5, cnt, total, vid }
- */ 
-json get_vfile_upload_info(int vid)
-{
-    char query[256];
-    snprintf(query, sizeof(query), "select vfile_id, vfile_chunks, vfile_md5, vfile_cnt, vfile_total from virtual_file where vfile_id = %d;", vid);
 
-    if (mysql_query(db, query)) {
-        finish_with_error(db);
-    }
-
-    MYSQL_ROW row;
-    MYSQL_RES *result;
-    
-    json res;
-    res["vid"] = -1;
-
-    if ((result = mysql_store_result(db))==NULL) {
-        finish_with_error(db);
-    }
-
-    if ((row = mysql_fetch_row(result)) != NULL)
-    {
-        res["vid"] = atoi(row[0]);
-        res["chunks"] = string(row[1]);
-        res["md5"] = string(row[2]);
-        res["cnt"] = atoi(row[3]);
-        res["total"] = atoi(row[4]);
-    }
-
-    mysql_free_result(result);   
-
-    return res;
-}
 
 /**
  * 根据 dirid 和 文件名，返回对应的 vid
@@ -411,6 +375,112 @@ int get_vid(int dirid, const string& filename)
     mysql_free_result(result);   
 
     return vid;
+}
+
+/**
+ * 根据 md5 获取对应的pfile相关信息
+ * 找到，返回 { pid, chunks, cnt, total, complete}
+ * 不存在，返回 { -1 }
+ */ 
+json get_pfile_info(const string& md5)
+{
+    char query[256];
+    snprintf(query, sizeof(query), "select pf.pfile_id, pf.pfile_chunks, pf.pfile_cnt, pf.pfile_total from physical_file pf where pf.pfile_md5 = '%s';", md5.c_str());
+
+    if (mysql_query(db, query)) {
+        finish_with_error(db);
+    }
+
+    MYSQL_ROW row;
+    MYSQL_RES *result;
+    
+    json res;
+    res["pid"] = -1;
+
+    if ((result = mysql_store_result(db))==NULL) {
+        finish_with_error(db);
+    }
+
+    if ((row = mysql_fetch_row(result)) != NULL)
+    {
+        res["pid"] = atoi(row[0]);
+        // res["name"] = string(row[1]);
+        res["chunks"] = string(row[1]);
+        res["cnt"] = atoi(row[2]);
+        res["total"] = atoi(row[3]);
+    }
+
+    mysql_free_result(result);   
+
+    return res;
+}
+
+// TODO API的参数修改之后，这个接口就可以删除了
+string get_vfile_md5(int vid)
+{
+    char query[256];
+    snprintf(query, sizeof(query), "select vfile_md5 from virtual_file where vfile_id = %d;", vid);
+
+    if (mysql_query(db, query)) {
+        finish_with_error(db);
+    }
+
+    MYSQL_ROW row;
+    MYSQL_RES *result;
+
+    string res = "";
+
+    if ((result = mysql_store_result(db))==NULL) {
+        finish_with_error(db);
+    }
+
+    if ((row = mysql_fetch_row(result)) != NULL)
+    {
+        res = string(row[0]);
+    }
+
+    mysql_free_result(result);   
+
+    return res;
+}
+
+
+
+
+/**
+ * 根据md5判断pfile表中是否存在，并且是否完成
+ * 如果存在，那么返回 { pid, p_complete}
+ * 不存在，返回{ pid -1 }
+ */
+json if_pfile_complete(const string& md5)
+{
+    char query[256];
+    snprintf(query, sizeof(query), "select pf.pfile_id, pf.pfile_complete from physical_file pf where pf.pfile_md5 = '%s';", md5.c_str());
+
+    if (mysql_query(db, query)) {
+        finish_with_error(db);
+    }
+
+    MYSQL_ROW row;
+    MYSQL_RES *result;
+    
+    json res;
+    res["pid"] = -1;
+    res["complete"] = 0;
+
+    if ((result = mysql_store_result(db))==NULL) {
+        finish_with_error(db);
+    }
+
+    if ((row = mysql_fetch_row(result)) != NULL)
+    {
+        res["pid"] = atoi(row[0]);
+        res["complete"] = atoi(row[1]);
+    }
+
+    mysql_free_result(result);   
+
+    return res;
 }
 
 //================================
@@ -471,16 +541,11 @@ bool create_dir(int uid, int bindid, const string& path)
     return error_occur;
 }
 
-/**
- * 前提条件，明确了文件是不存在的
- * 创建成功， 返回 vid
- * 创建失败， 返回 -1
- */ 
-int create_vfile(int dirid, const string& filename, ll size, const string& md5, int mtime, const string& chunks, int cnt, int total, int complete)
-{
-    // string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime, vfile_chunks, vfile_cnt, vfile_total, vfile_complete) values( " + dirid + ", '" + filename + "', " + size + ", '" + md5 + "', " + mtime + ", '" + chunks + "', " + cnt + ", " + total + ", " + complete + ")";
 
-    string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime, vfile_chunks, vfile_cnt, vfile_total, vfile_complete) values( ";
+
+int create_vfile_new(int dirid, const string& filename, ll size, const string& md5, int mtime)
+{    
+    string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime) values( ";
 
     query += std::to_string(dirid) + ", '";
 
@@ -490,15 +555,7 @@ int create_vfile(int dirid, const string& filename, ll size, const string& md5, 
 
     query += md5 + "', ";
 
-    query += std::to_string(mtime) + ", '";
-
-    query += chunks + "', ";
-
-    query += std::to_string(cnt) + ", ";
-
-    query += std::to_string(total) + ", ";
-
-    query += std::to_string(complete) + ")";
+    query += std::to_string(mtime) + ")";
 
     int vid = -1;
     if (mysql_query(db, query.c_str())) {
@@ -552,6 +609,25 @@ int create_dir_return_dirid(int uid, int bindid, const string& path)
     return dirid;
 }
 
+int create_pfile(const string& md5, const string& chunks, int total)
+{
+    string query = "insert into physical_file (pfile_md5, pfile_refcnt, pfile_chunks, pfile_cnt, pfile_total, pfile_complete) values( '";
+
+    query += md5 + "', 1, '";
+
+    query += chunks + "', 0, ";
+
+    query += std::to_string(total) + ", 0)";
+
+    bool error_occur = false;
+    if (mysql_query(db, query.c_str())) {
+        error_occur = true;
+        finish_with_error(db);
+    }
+
+    return error_occur;
+}
+
 //================================
 // UPDATE
 
@@ -593,19 +669,41 @@ bool set_bind_dir(int uid, int bindid)
     return error_occur;
 }
 
-/**
- * 前提条件，明确了文件是存在的
- * 只更新文件的上传进度
- * 这个 API 只有 uploadChunk 的情况下才会被调用
- * 更新文件的上传进度相关信息，chunks, cnt, complete
- */ 
-bool update_vfile_upload_progress(int vid, const string& chunks, int cnt, int complete)
+
+
+
+bool update_pfile_upload_progress(int pid, const string& chunks, int cnt, int complete)
 {
-    string query = "update `virtual_file` set vfile_chunks = '" + chunks + "', vfile_cnt = ";
+    string query = "update `physical_file` set pfile_chunks = '" + chunks + "', pfile_cnt = ";
 
-    query += std::to_string(cnt) + ", vfile_complete = ";
+    query += std::to_string(cnt) + ", pfile_complete = ";
 
-    query += std::to_string(complete) + " where vfile_id = ";
+    query += std::to_string(complete) + " where pfile_id = ";
+
+    query += std::to_string(pid) + ";";
+
+    bool error_occur = false;
+
+    if (mysql_query(db, query.c_str()))
+    {
+        error_occur = true;
+        finish_with_error(db);
+    }
+
+    return error_occur;
+}
+
+
+
+bool update_vfile_whole_new(int vid, const string& md5, ll size, int mtime)
+{    
+    string query = "update `virtual_file` set vfile_md5 = '" + md5 + "', vfile_md5 = '";
+
+    query += md5 + "', vfile_size = ";
+
+    query += std::to_string(size) + ", vfile_mtime = ";
+
+    query += std::to_string(mtime) + " where vfile_id = ";
 
     query += std::to_string(vid) + ";";
 
@@ -620,27 +718,9 @@ bool update_vfile_upload_progress(int vid, const string& chunks, int cnt, int co
     return error_occur;
 }
 
-/**
- * 用于初次 uploadFile API
- * 更新同名 vfile 的相关信息，md5, chunks, size, mtime, cnt, total, complete
- */ 
-bool update_vfile_whole(int vid, const string &md5, const string &chunks, ll size, int mtime, int cnt, int total, int complete)
+bool increase_pfile_refcnt(int pid)
 {
-    string query = "update `virtual_file` set vfile_md5 = '" + md5 + "', vfile_chunks = '";
-
-    query += chunks + "', vfile_size = ";
-
-    query += std::to_string(size) + ", vfile_mtime = ";
-
-    query += std::to_string(mtime) + ", vfile_cnt = ";
-
-    query += std::to_string(cnt) + ", vfile_total = ";
-
-    query += std::to_string(total) + ", vfile_complete = ";
-
-    query += std::to_string(complete) + " where vfile_id = ";
-
-    query += std::to_string(vid) + ";";
+    string query = "update `physical_file` set pfile_refcnt = pfile_refcnt + 1 where pfile_id = " + std::to_string(pid) + ";";
 
     bool error_occur = false;
 
@@ -648,6 +728,29 @@ bool update_vfile_whole(int vid, const string &md5, const string &chunks, ll siz
     {
         error_occur = true;
         finish_with_error(db);
+    }
+    if( (int)mysql_affected_rows(db) != 1)
+    {
+        error_occur = true;
+    }
+
+    return error_occur;
+}
+
+bool decrease_pfile_refcnt_by_md5(const string& md5)
+{
+    string query = "update `physical_file` set pfile_refcnt = pfile_refcnt - 1 where pfile_md5 = '" + md5 + "';";
+
+    bool error_occur = false;
+
+    if (mysql_query(db, query.c_str()))
+    {
+        error_occur = true;
+        finish_with_error(db);
+    }
+    if( (int)mysql_affected_rows(db) != 1)
+    {
+        error_occur = true;
     }
 
     return error_occur;
@@ -728,3 +831,184 @@ bool delete_file(int dirid, const string& filename)
 
 //================================
 // TODO 未实现 or 未测试
+
+// deprecated
+
+
+/*
+string get_pname_by_md5(const string& md5)
+{
+    char query[256];
+    snprintf(query, sizeof(query), "select pfile_name from physical_file where pfile_md5 = '%s';", md5.c_str());
+
+    if (mysql_query(db, query)) {
+        finish_with_error(db);
+    }
+
+    MYSQL_ROW row;
+    MYSQL_RES *result;
+
+    string res = "";
+
+    if ((result = mysql_store_result(db))==NULL) {
+        finish_with_error(db);
+    }
+
+    if ((row = mysql_fetch_row(result)) != NULL)
+    {
+        res = string(row[0]);
+    }
+
+    mysql_free_result(result);   
+
+    return res;
+}
+*/
+
+// /**
+//  * 根据 dirid 和 filename 查找对应文件的信息
+//  * 文件不存在，返回 { vid -1 }
+//  * 文件存在，返回 { chunks, md5, cnt, total, vid }
+//  */ 
+// json get_vfile_upload_info(int vid)
+// {
+//     char query[256];
+//     snprintf(query, sizeof(query), "select vfile_id, vfile_chunks, vfile_md5, vfile_cnt, vfile_total from virtual_file where vfile_id = %d;", vid);
+
+//     if (mysql_query(db, query)) {
+//         finish_with_error(db);
+//     }
+
+//     MYSQL_ROW row;
+//     MYSQL_RES *result;
+    
+//     json res;
+//     res["vid"] = -1;
+
+//     if ((result = mysql_store_result(db))==NULL) {
+//         finish_with_error(db);
+//     }
+
+//     if ((row = mysql_fetch_row(result)) != NULL)
+//     {
+//         res["vid"] = atoi(row[0]);
+//         res["chunks"] = string(row[1]);
+//         res["md5"] = string(row[2]);
+//         res["cnt"] = atoi(row[3]);
+//         res["total"] = atoi(row[4]);
+//     }
+
+//     mysql_free_result(result);   
+
+//     return res;
+// }
+
+// /**
+//  * 用于初次 uploadFile API
+//  * 更新同名 vfile 的相关信息，md5, chunks, size, mtime, cnt, total, complete
+//  */ 
+// bool update_vfile_whole(int vid, const string &md5, const string &chunks, ll size, int mtime, int cnt, int total, int complete)
+// {
+//     string query = "update `virtual_file` set vfile_md5 = '" + md5 + "', vfile_chunks = '";
+
+//     query += chunks + "', vfile_size = ";
+
+//     query += std::to_string(size) + ", vfile_mtime = ";
+
+//     query += std::to_string(mtime) + ", vfile_cnt = ";
+
+//     query += std::to_string(cnt) + ", vfile_total = ";
+
+//     query += std::to_string(total) + ", vfile_complete = ";
+
+//     query += std::to_string(complete) + " where vfile_id = ";
+
+//     query += std::to_string(vid) + ";";
+
+//     bool error_occur = false;
+
+//     if (mysql_query(db, query.c_str()))
+//     {
+//         error_occur = true;
+//         finish_with_error(db);
+//     }
+
+//     return error_occur;
+// }
+
+// /**
+//  * 前提条件，明确了文件是不存在的
+//  * 创建成功， 返回 vid
+//  * 创建失败， 返回 -1
+//  */ 
+// int create_vfile(int dirid, const string& filename, ll size, const string& md5, int mtime, const string& chunks, int cnt, int total, int complete)
+// {
+//     // string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime, vfile_chunks, vfile_cnt, vfile_total, vfile_complete) values( " + dirid + ", '" + filename + "', " + size + ", '" + md5 + "', " + mtime + ", '" + chunks + "', " + cnt + ", " + total + ", " + complete + ")";
+
+//     string query = "insert into virtual_file (vfile_dir_id, vfile_name, vfile_size, vfile_md5, vfile_mtime, vfile_chunks, vfile_cnt, vfile_total, vfile_complete) values( ";
+
+//     query += std::to_string(dirid) + ", '";
+
+//     query += filename + "', ";
+
+//     query += std::to_string(size) + ", '";
+
+//     query += md5 + "', ";
+
+//     query += std::to_string(mtime) + ", '";
+
+//     query += chunks + "', ";
+
+//     query += std::to_string(cnt) + ", ";
+
+//     query += std::to_string(total) + ", ";
+
+//     query += std::to_string(complete) + ")";
+
+//     int vid = -1;
+//     if (mysql_query(db, query.c_str())) {
+//         finish_with_error(db);
+//     }else{
+//         // 获取添加之后的vid
+//         mysql_query(db, "select @@identity");
+//         MYSQL_ROW row;
+//         MYSQL_RES *result;
+//         if ((result = mysql_store_result(db))==NULL) {
+//             finish_with_error(db);
+//         }
+//         if ((row = mysql_fetch_row(result)) != NULL)
+//         {
+//             vid = atoi(row[0]);
+//         }
+//         mysql_free_result(result);  
+//     }
+
+//     return vid;
+// }
+
+// /**
+//  * 前提条件，明确了文件是存在的
+//  * 只更新文件的上传进度
+//  * 这个 API 只有 uploadChunk 的情况下才会被调用
+//  * 更新文件的上传进度相关信息，chunks, cnt, complete
+//  */ 
+// bool update_vfile_upload_progress(int vid, const string& chunks, int cnt, int complete)
+// {
+//     string query = "update `virtual_file` set vfile_chunks = '" + chunks + "', vfile_cnt = ";
+
+//     query += std::to_string(cnt) + ", vfile_complete = ";
+
+//     query += std::to_string(complete) + " where vfile_id = ";
+
+//     query += std::to_string(vid) + ";";
+
+//     bool error_occur = false;
+
+//     if (mysql_query(db, query.c_str()))
+//     {
+//         error_occur = true;
+//         finish_with_error(db);
+//     }
+
+//     return error_occur;
+// }
