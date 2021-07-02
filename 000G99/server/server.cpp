@@ -370,6 +370,7 @@ private:
     void logout(json &, std::shared_ptr<SOCK_INFO> &);
     void setbind(json &, std::shared_ptr<SOCK_INFO> &);
     void disbind(json &, std::shared_ptr<SOCK_INFO> &);
+    void getbindid(json &, std::shared_ptr<SOCK_INFO> &);
     void getdir(json &, std::shared_ptr<SOCK_INFO> &);
 
     void uploadFile(json &, std::shared_ptr<SOCK_INFO> &);
@@ -428,6 +429,7 @@ public:
         m_type["logout"] = "logoutRes\n";
         m_type["disbind"] = "disbindRes\n";
         m_type["setbind"] = "setbindRes\n";
+        m_type["getbindid"] = "getbindidRes\n";
         m_type["getdir"] = "getdirRes\n";
         m_type["uploadFile"] = "uploadFileRes\n";
         m_type["uploadChunk"] = "uploadChunkRes\n";
@@ -615,6 +617,9 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 else if(type == "disbind"){
                     disbind(header, sinfo);
                 }
+                else if(type == "getbindid"){
+                    getbindid(header, sinfo);
+                }
                 else if(type == "getdir"){
                     getdir(header, sinfo);
                 }
@@ -785,7 +790,7 @@ void Server::logout(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["msg"] = "log out success";
         logger("user: %s logout", username.c_str());
     }
-    sinfo->send_header(res_type, res);
+    // sinfo->send_header(res_type, res);
     close_release(sinfo);
     return;
 }
@@ -848,6 +853,29 @@ void Server::disbind(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         res["error"] = 0;
         res["msg"] = "disbind success";
         trans("uid: %d disbind.", uid);
+    }
+    sinfo->send_header(res_type, res);
+    return;
+}
+
+void Server::getbindid(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
+{
+    json res;
+    res["bindid"] = -1;
+    int uid = checkSession(header, res, sinfo);
+    if(uid == -1)
+        return;
+
+    int bindid = get_bindid_by_uid(uid);
+    if(bindid == -1 || bindid == 0){
+        res["error"] = 1;
+        res["bindid"] = bindid;
+        res["msg"] = "get bindid failed";
+    }else{
+        res["error"] = 0;
+        res["bindid"] = bindid;
+        res["msg"] = "get bindid success";
+        trans("uid: %d getbindid.", uid);
     }
     sinfo->send_header(res_type, res);
     return;
@@ -1386,7 +1414,7 @@ int main(int argc, char** argv)
     };
     my_handle_option(options, 1, argc, argv);
 
-    // my_daemon(1, 1);
+    my_daemon(1, 1);
 
     Server server(serv_port, "0.0.0.0");
     server.Run();

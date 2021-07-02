@@ -26,6 +26,7 @@ using json = nlohmann::json;
 typedef long long ll;
 
 const ll CHUNK_SIZE = 4 * 1024 * 1024;
+const int delay = 2;
 
 //=====================================
 // DONE
@@ -61,7 +62,7 @@ bool sock_ready_to_read(int sock)
 {
     fd_set rfds;
     timeval tv;
-    tv.tv_sec = 30;
+    tv.tv_sec = delay;
     tv.tv_usec = 0;
     FD_ZERO(&rfds);
     FD_SET(sock, &rfds);
@@ -78,7 +79,7 @@ bool sock_ready_to_write(int sock)
 {
     fd_set wfds;
     timeval tv;
-    tv.tv_sec = 30;
+    tv.tv_sec = delay;
     tv.tv_usec = 0;
     FD_ZERO(&wfds);
     FD_SET(sock, &wfds);
