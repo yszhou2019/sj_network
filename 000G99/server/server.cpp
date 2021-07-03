@@ -34,9 +34,10 @@
 /* utils */
 #include "utils/json.hpp"
 #include "utils/tools.hpp"
-
-/* db operator */
+#include "utils/rio.hpp"
 #include "utils/db.hpp"
+
+/* db connection */
 #include <mysql.h>
 
 /* md5 */

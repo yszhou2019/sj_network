@@ -1,18 +1,7 @@
-
 #include "json.hpp"
 #include <string>
 
-/* pipe */
-#include <unistd.h>
 
-/* splice */
-#include <fcntl.h>
-
-/* select */
-#include <sys/select.h>
-
-/* fstat */
-#include <sys/stat.h>
 
 /* rand */
 #include <stdlib.h>
@@ -26,7 +15,6 @@ using json = nlohmann::json;
 typedef long long ll;
 
 const ll CHUNK_SIZE = 4 * 1024 * 1024;
-const int delay = 2;
 
 //=====================================
 // DONE
@@ -60,176 +48,6 @@ json generate_chunks_info(ll size, int chunk_num)
 //     return md5;
 // }
 
-/**
- * 最多等待1秒
- */ 
-bool sock_ready_to_read(int sock)
-{
-    fd_set rfds;
-    timeval tv;
-    tv.tv_sec = delay;
-    tv.tv_usec = 0;
-    FD_ZERO(&rfds);
-    FD_SET(sock, &rfds);
-    int res = select(sock + 1, &rfds, NULL, NULL, &tv);
-    if(FD_ISSET(sock, &rfds))
-    {
-        return true;
-    }
-    printf("socket 超时未读就绪\n");
-    return false;
-}
-
-bool sock_ready_to_write(int sock)
-{
-    fd_set wfds;
-    timeval tv;
-    tv.tv_sec = delay;
-    tv.tv_usec = 0;
-    FD_ZERO(&wfds);
-    FD_SET(sock, &wfds);
-    int res = select(sock + 1, NULL, &wfds, NULL, &tv);
-    if(FD_ISSET(sock, &wfds))
-    {
-        printf("就绪\n");
-        return true;
-    }
-    printf("socket 超时未写就绪\n");
-    return false;
-}
-
-off_t get_file_size(const string& filename)
-{
-    int fd = open(filename.c_str(), O_RDONLY);
-    struct stat buf;
-    fstat(fd, &buf);
-    close(fd);
-    return buf.st_size;
-}
-
-/**
- * 保证socket正常，文件存在，文件大小合适的情况下
- * 将数据写入指定文件中
- * 返回写入字节数量
- */ 
-ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t chunksize)
-{
-
-    off_t filesize = get_file_size(filename);
-    if(offset + chunksize > filesize)
-        return 0;
-
-    int pipefd[2];
-    pipe(pipefd);
-
-    // socket -> data -> file
-    int fd = open(filename.c_str(), O_WRONLY, 766);
-    lseek(fd, offset, SEEK_SET);
-
-    ssize_t cnt = 0;
-    size_t size = chunksize;
-
-    while(cnt != chunksize)
-    {
-        bool ready = sock_ready_to_read(sock);
-        // printf("socket %s\n", ready ? "就绪" : "放弃");
-        if (!ready)
-        {
-            close(fd);
-            close(pipefd[0]);
-            close(pipefd[1]);
-            // 超出了可以忍受的时间，还没有收到足够的字节数量，就不再等待
-            return 0;
-        }
-
-        // int should_trans_bytes = (size > 4000 ? 4000 : size);
-        // ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
-        // ssize_t w_bytes = splice( pipefd[0], NULL, fd, &offset, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE );
-        printf("sock ready\n");
-        ssize_t r_bytes = splice(sock, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
-        printf("read sock to pipe\n");
-        ssize_t w_bytes = splice( pipefd[0], NULL, fd, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK );
-        printf("read pipe to file\n");
-        printf("read %ld bytes from sock, write %ld bytes to file\n", r_bytes, w_bytes);
-
-        if(w_bytes == 0)
-            break;
-        if(w_bytes == -1)
-            return cnt;
-        cnt += w_bytes;
-        offset += w_bytes;
-        size -= w_bytes;
-    }
-
-    close(fd);
-    close(pipefd[0]);
-    close(pipefd[1]);
-    char temp;
-    read(sock, &temp, 1);
-    if(temp !='\0')
-    {
-        printf("read chunks without end_zero\n");
-    }
-    return cnt;
-}
-
-/**
- * 保证socket正常，文件存在，文件大小合适的情况下
- * 从文件中读取字节，发送给socket
- * 返回发送的字节数量
- */ 
-ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t chunksize)
-{
-    int pipefd[2];
-    pipe(pipefd);
-
-    // file -> data -> socket
-    int fd = open(filename.c_str(), O_RDONLY, 766);
-    lseek(fd, offset, SEEK_SET);
-
-    ssize_t cnt = 0;
-    size_t size = chunksize;
-
-    while(cnt != chunksize)
-    {
-        bool ready = sock_ready_to_write(sock);
-        if (!ready)
-        {
-            close(fd);
-            close(pipefd[0]);
-            close(pipefd[1]);
-            // 超出了可以忍受的时间，还没有缓冲区可以发送，就不再等待
-            printf("发送出错, 准备退出\n");
-            return 0;
-        }
-
-        // int should_trans_bytes = (size > 4000 ? 4000 : size);
-        // ssize_t r_bytes = splice(fd, &offset, pipefd[1], NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
-        // ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, should_trans_bytes, SPLICE_F_MORE | SPLICE_F_MOVE);
-        printf("sock ready\n");
-        ssize_t r_bytes = splice(fd, NULL, pipefd[1], NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
-        printf("read file to pipe\n");
-        ssize_t w_bytes = splice(pipefd[0], NULL, sock, NULL, size, SPLICE_F_MORE | SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
-        printf("read pipe to socket\n");
-
-        printf("read %ld from file, write %ld bytes to sock\n", r_bytes, w_bytes);
-        if(w_bytes == 0)
-            break;
-        if(w_bytes == -1)
-            return cnt;
-        cnt += w_bytes;
-        offset += w_bytes;
-        size -= w_bytes;
-    }
-
-
-    close(fd);
-    close(pipefd[0]);
-    close(pipefd[1]);
-    char temp = '\0';
-    write(sock, &temp, 1);
-    return cnt;
-}
 
 /**
  * 前提，文件不存在
@@ -245,8 +63,6 @@ bool create_file_allocate_space(const string& filename, ll size)
     close(fd);
     return res != 0 ;
 }
-
-
 
 /**
  * 对密码进行加密
@@ -292,30 +108,6 @@ string generate_session()
 }
 
 
-void discard_extra(int sock, size_t chunksize)
-{
-    bool ready = sock_ready_to_read(sock);
-    if (!ready)
-    {
-        return;
-    }
-    u_char buffer[2048];
-    size_t res = chunksize;
-    while(res != 0)
-    {
-        auto ready = sock_ready_to_read(sock);
-        if(!ready)
-            return;
-        auto should_read_bytes = (res >= 2048 ? 2048 : res);
-        auto actural_read = read(sock, buffer, should_read_bytes);
-        printf("丢弃 %d bytes\n", actural_read);
-        if (actural_read == -1)
-            actural_read = 0;
-        res -= actural_read;
-    }
-    printf("准备退出\n");
-    read(sock, buffer, 1);
-}
 
 
 
