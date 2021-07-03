@@ -155,7 +155,7 @@ ssize_t write_to_file(int sock, const string& filename, loff_t offset, size_t ch
         if(w_bytes == 0)
             break;
         if(w_bytes == -1)
-            return -1;
+            return cnt;
         cnt += w_bytes;
         offset += w_bytes;
         size -= w_bytes;
@@ -216,7 +216,7 @@ ssize_t send_to_socket(int sock, const string& filename, loff_t offset, size_t c
         if(w_bytes == 0)
             break;
         if(w_bytes == -1)
-            return -1;
+            return cnt;
         cnt += w_bytes;
         offset += w_bytes;
         size -= w_bytes;
@@ -303,12 +303,17 @@ void discard_extra(int sock, size_t chunksize)
     size_t res = chunksize;
     while(res != 0)
     {
+        auto ready = sock_ready_to_read(sock);
+        if(!ready)
+            return;
         auto should_read_bytes = (res >= 2048 ? 2048 : res);
         auto actural_read = read(sock, buffer, should_read_bytes);
-        if(actural_read == -1)
+        printf("¶ªÆú %d bytes\n", actural_read);
+        if (actural_read == -1)
             actural_read = 0;
         res -= actural_read;
     }
+    printf("×¼±¸ÍË³ö\n");
     read(sock, buffer, 1);
 }
 

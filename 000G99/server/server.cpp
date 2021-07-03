@@ -58,6 +58,7 @@ using json = nlohmann::json;
 
 MYSQL* db;
 
+#define debug(...) Server::debugger(__VA_ARGS__)
 #define conn(...) Server::LOG("CONN", __VA_ARGS__)
 #define logger(...) Server::LOG("LOG", __VA_ARGS__)
 #define trans(...) Server::LOG("TRANSACION", __VA_ARGS__)
@@ -253,6 +254,7 @@ string SOCK_INFO::parse_req_type()
     }
     // if(i == 20)
     //     return "";
+    // TODO 这里可能有bug
     buffer[i] = '\0';
     print_buffer(buffer, i);
     string res = (const char *)buffer;
@@ -327,6 +329,7 @@ class Server{
 private:
     /* 日志 */
     FILE *log;
+    FILE *debug_log;
 
     /* initial setting */
     // int serv_port;
@@ -357,6 +360,7 @@ private:
     int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
     int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
     void LOG(const char *logLevel, const char *format, ...);
+    void debugger(const char *format, ...);
 
 private:
     void close_release(std::shared_ptr<SOCK_INFO> & sinfo);
@@ -391,6 +395,8 @@ public:
         if(setvbuf(log, NULL, _IONBF, 0)!=0){
             printf("close fprintf buffer failed!\n");
         }
+        debug_log = fopen("/home/G1752240_new/log/debug.log", "a+");
+        setvbuf(debug_log, NULL, _IONBF, 0);
 
         listen_fd = create_server("0.0.0.0", _s_port, true);
         // listen to socket
@@ -436,7 +442,6 @@ public:
         m_type["deleteFile"] = "deleteFileRes\n";
         m_type["createDir"] = "createDirRes\n";
         m_type["deleteDir"] = "deleteDirRes\n";
-        // m_type[""] = "Res\n";
         
 
     }
@@ -493,6 +498,18 @@ void Server::LOG(
     va_end(arglst);
 }
 
+void Server::debugger(
+            const char *format ,...)
+{
+    static char output[1024] = {0};
+    va_list arglst;
+    va_start(arglst, format);
+    vsnprintf(output, sizeof(output), format, arglst);
+    fprintf(debug_log, "%s\n", output);
+    printf("%s\n", output);
+    va_end(arglst);
+}
+
 
 void Server::close_release(std::shared_ptr<SOCK_INFO> & sinfo){
     printf("[关闭 ]\n");
@@ -514,15 +531,17 @@ void Server::Run()
 {
     // showUser();
     while(1){
-        printf("新一轮epoll...\n");
+        debug("新一轮epoll...");
         printf("[%d %d]\n", epoll_fd, MAX_EVENT_NUMBER);
-        int ret = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
-        if (ret < 0)
+        int res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
+        debug("新一轮epoll触发...");
+        if (res < 0)
         {
-            printf("epool failure\n");
+            debug("epoll failed, %d", res);
             break;
         }
-        loop_once(events, ret, listen_fd);
+        debug("epoll succ, %d", res);
+        loop_once(events, res, listen_fd);
         printf("一轮epoll结束\n*******************\n");
     }
 }
@@ -532,6 +551,8 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
     printf("进入循环epoll\n");
 	for(int i = 0; i < number; i++) {
 		int sockfd = events[i].data.fd;
+        
+        fprintf(debug_log, "fd, %d\n",sockfd);
         // printf("checking %d, total %d, sock%d listen_fd%d\n",i,number,sockfd,listen_fd);
 		if(sockfd == listen_fd) {
             struct sockaddr_in client;
@@ -566,39 +587,56 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             // string type = sinfo->type;
             // json header = sinfo->header;
 
+            // TODO 正确的逻辑应该是，先读取type，type合法，进行解析；不合法，跳过本次请求(或者关闭socket)
+            // TODO 然后解析json，执行不同的操作
+
             string type = sinfo->parse_req_type();
-            if(type == "")
+            debug("尝试接收type");
+            if (type == "")
             {
-                printf("type非法 跳过这次请求\n");
+                debug("type为空 跳过这次请求");
                 continue;
             }
             else if(type == "close")
             {
+                debug("对方关闭socket，type为close，进行退出");
                 close_release(sinfo);
                 continue;
             }
-            // 读取客户端的header
-            int len = sinfo->recv_header();
-            if(len == -1)
+            else if(m_type.count(type) == 0)
             {
-                printf("json非法 跳过这次请求\n");
+                debug("type非法 关闭释放");
+                close_release(sinfo);
                 continue;
             }
 
+            // 解析json的前提是 type 类型合法
+            // 读取客户端的header
+            int len = sinfo->recv_header();
+            debug("读取len %d", len);
+            if(len == -1)
+            {
+                debug("json非法 跳过这次请求");
+                continue;
+            }
             print_json(type, sinfo->buffer, len);
+            debug("尝试解析json");
 
+            // TODO parse_header出错导致的宕机，需要知道len
             json header;
             try{
                 header = std::move(sinfo->parse_header(len));
             }catch(json::exception e){
-                printf("接收到错误的json，跳过\n");
+                debug("接收到错误的json，跳过");
                 std::cout << e.what() << std::endl;
                 continue;
             }
-            printf("客户端请求header%s\n", header.dump().c_str());
-
-            std::cout << type << std::endl;
+            debug("json正确");
+            debug("客户端请求header%s", header.dump().c_str());
+            debug("进行了header.dump()");
+            debug("type %s",type.c_str());
             res_type = m_type[type];
+            debug("映射mtype");
             try{
                 // 根据不同的type，执行不同的操作
                 if(type == "signup"){
@@ -640,8 +678,9 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 else if(type == "deleteDir"){
                     deleteDir(header, sinfo);
                 }
-                else if(type == "other"){
-
+                else{
+                    debug("type对应的类型非法，且解析json成功 关闭释放");
+                    close_release(sinfo);
                 }
             }catch(json::exception e)
             {
@@ -1219,6 +1258,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     size_t chunksize = header["chunksize"].get<size_t>();
     size_t vfile_id = header["vfile_id"].get<size_t>();
     int chunkid = header["chunkid"];
+    debug("上传 chunkid-%d 中", chunkid);
 
     json res;
     res["queueid"] = queueid;
@@ -1245,12 +1285,15 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     int chunk_is_done = chunks[chunkid][2];
 
     if(chunk_is_done){
+        debug("丢弃chunkdid-%d", chunkid);
         // ready chunksize bytes from socket;
+        // TODO uploadChunk应该有2个通信API，1个用来判断是否有必要上传，另外1个用来进行上传操作
         discard_extra(sinfo->sock, chunksize);
 
         res["error"] = 0;
         res["msg"] = "this chunk has been uploaded";
         sinfo->send_header(res_type, res);
+        debug("丢弃res 发送完毕");
         return;
     }
 
@@ -1260,6 +1303,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     // string md5 = pfile["md5"];
     string filename = get_filename_by_md5(md5);
 
+    debug("写入 chunkid-%d", chunkid);
     // 进行传输
     ssize_t bytes = write_to_file(sinfo->sock, filename, offset, chunksize);
 
@@ -1286,6 +1330,7 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         // vfile["complete"] = (cnt == total ? 1 : 0);
 
         update_pfile_upload_progress(pid, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
+        debug("更新上传进度");
         // update_vfile_upload_progress(vfile_id, json(chunks).dump(4), cnt, (cnt == total ? 1 : 0));
         trans("uid: %d uploadChunk (md5:%s) chunkid %d success.", uid,md5.c_str(),chunkid);
     }
@@ -1296,9 +1341,12 @@ void Server::uploadChunk(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
         // write failed
         res["error"] = 1;
         res["msg"] = temp;
+        debug("写入 chunkid-%d 失败", chunkid);
         trans("uid: %d uploadChunk (md5:%s) chunkid %d failed.", uid,md5.c_str(),chunkid);
     }
+    debug("写入 chunkid-%d 响应", chunkid);
     sinfo->send_header(res_type, res);
+    debug("写入 chunkid-%d 响应完毕", chunkid);
     return;
 }
 
