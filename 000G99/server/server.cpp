@@ -242,20 +242,23 @@ string SOCK_INFO::parse_req_type()
     i++;
     while (1)
     {
-        read(sock, buffer + i, 1);
+        byte = read(sock, buffer + i, 1);
+        if(byte != 1)
+        {
+            return "";
+        }
         if(buffer[i] == '\n')
         {
             break;
         }
         i++;
-        // if(i == 20)
-        // {
-        //     break;
-        // }
+        // 避免非法请求导致一直读取，需要关闭
+        if(i == 20){
+            return "close";
+        }
     }
     // if(i == 20)
     //     return "";
-    // TODO 这里可能有bug
     buffer[i] = '\0';
     print_buffer(buffer, i);
     string res = (const char *)buffer;
@@ -276,7 +279,9 @@ int SOCK_INFO::recv_header()
     int res = -1;
     while (1)
     {
-        read(sock, buffer + i, 1);
+        int byte = read(sock, buffer + i, 1);
+        if(byte != 1)
+            return -1;
         cnt++;
         buffer_len += 1;
         if(buffer[i]=='\0')
@@ -289,7 +294,7 @@ int SOCK_INFO::recv_header()
         i++;
     }
     print_buffer(buffer, i);
-    // TODO 这里for循环，实际上假设了json的长度小于buffer
+    // 这里for循环，假设了json的长度小于buffer
     return res;
 }
 
@@ -623,13 +628,13 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
             print_json(type, sinfo->buffer, len);
             debug("尝试解析json");
 
-            // TODO parse_header出错导致的宕机，需要知道len
+            // 错误的len，导致parse_header出错，导致宕机
             json header;
             try{
                 header = std::move(sinfo->parse_header(len));
             }catch(json::exception e){
                 debug("接收到错误的json，跳过");
-                std::cout << e.what() << std::endl;
+                debug("%s", e.what());
                 continue;
             }
             debug("json正确");
@@ -685,17 +690,17 @@ void Server::loop_once(epoll_event* events, int number, int listen_fd) {
                 }
             }catch(json::exception e)
             {
-                std::cout << e.what() << std::endl;
+                debug("%s", e.what());
                 close_release(sinfos[sockfd]);
             }
         }
         else if(events[i].events & EPOLLHUP){
             // 侦测到客户端断开连接，服务器释放对应资源
-            printf("进入EPOLLHUP\n");
+            debug("进入EPOLLHUP");
             close_release(sinfos[sockfd]);
         }
         else if(events[i].events & EPOLLERR){
-            printf("进入EPOLLERR\n");
+            debug("进入EPOLLERR");
             close_release(sinfos[sockfd]);
         }
     }
