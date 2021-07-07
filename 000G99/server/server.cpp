@@ -19,6 +19,8 @@
 #include <sys/epoll.h>
 #include <sys/stat.h> // stat file
 #include <sys/sendfile.h> // sendfile
+#include <sys/signal.h> // signal
+#include <sys/wait.h> // waitpid
 
 
 /* STL */
@@ -65,7 +67,7 @@ MYSQL* db;
 #define trans(...) Server::LOG("TRANSACION", __VA_ARGS__)
 
 const int listen_Q = 20;
-const int MAX_EVENT_NUMBER = 100;
+const int MAX_EVENT_NUMBER = 3;
 
 const int BUFFER_SIZE = 1024;
 
@@ -98,16 +100,14 @@ void remove_event(int epoll_fd, int fd){
     }
 }
 
-// typedef std::shared_ptr<Readbuf_> Rdbuf_ptr;
 struct SOCK_INFO{
     int     sock;               // client fd
     u_short client_port;
     u_int client_ip;
-    int buffer_len;             // buffer中的有效字节数量
     u_char buffer[BUFFER_SIZE];
     // string type;
     // json header;
-    SOCK_INFO(int _sock, u_short _client_port, u_int _client_ip) : sock(_sock), client_port(_client_port), client_ip(_client_ip), buffer_len(0){};
+    SOCK_INFO(int _sock, u_short _client_port, u_int _client_ip) : sock(_sock), client_port(_client_port), client_ip(_client_ip){};
     int recv_header();          // 从指定的socket中读取一个json到缓冲区
     json parse_header(int);        // 从缓冲区中解析出一个json
     int send_header(string, json&);          // 向指定的socket发送一个json数据
@@ -223,7 +223,6 @@ ssize_t SOCK_INFO::recvn(char* buffer, ssize_t len)
 }
 
 
-//  *         断开连接返回-2
 /**
  * 解析请求类型
  * 首先读取1字节，如果读取=0，说明对端关闭socket，那么返回"close"
@@ -283,7 +282,6 @@ int SOCK_INFO::recv_header()
         if(byte != 1)
             return -1;
         cnt++;
-        buffer_len += 1;
         if(buffer[i]=='\0')
         {
             res = i;
@@ -312,7 +310,6 @@ json SOCK_INFO::parse_header(int len)
     // auto header = json::parse(buffer, buffer + len + 1);
     json header = json::parse(buffer);
     memset(buffer, 0, sizeof(buffer));
-    buffer_len = 0;
     return header;
 }
 
@@ -338,41 +335,49 @@ private:
     FILE *debug_log;
 
     /* initial setting */
-    // int serv_port;
-    // char serv_ip_str[30];
     sockaddr_in serv_addr;
-
+    
+    /* db相关 */
     string db_ip;
     string db_name;
     string db_user;
     string db_pwd;
+    
+    /* 存储路径相关 */
     string store_path;
     string log_name;
+    string debuglog_name;
     string realfile_path;
 
     /* socket相关 */
-    epoll_event events[MAX_EVENT_NUMBER];
     int listen_fd;
     int epoll_fd;
+    epoll_event events[MAX_EVENT_NUMBER];
 
-    /* 处理多个TCP socket需要维护的一些数据结构 */
-    std::unordered_map<int, std::shared_ptr<SOCK_INFO>> sinfos;  /* client_fd -> SOCK_INFO 不能采用数组，因为断开连接之后前面的fd有可能出现缺失 */
+    std::unordered_map<int, std::shared_ptr<SOCK_INFO>> sinfos;
     std::unordered_map<string, string> m_type;
     string res_type;
 
+public:
+    void Run();
+
 private:
-    void readConf();
+    void read_conf();
     string get_filename_by_md5(const string &);
-    int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
-    int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
+
+    /* logs */
     void LOG(const char *logLevel, const char *format, ...);
     void debugger(const char *format, ...);
 
 private:
-    void close_release(std::shared_ptr<SOCK_INFO> & sinfo);
-    void loop_once(epoll_event *events, int number, int listen_fd);
-    void download(json &, std::shared_ptr<SOCK_INFO> &);
-    void upload(json &, std::shared_ptr<SOCK_INFO> &);
+    void child_loop();
+    void loop_once(epoll_event *events, int number);
+    void close_release(std::shared_ptr<SOCK_INFO> &sinfo);
+
+private:
+    /* APIs */
+    int checkSession(json &, json &, std::shared_ptr<SOCK_INFO> &);
+    int checkBind(json &, json &, int, std::shared_ptr<SOCK_INFO> &);
 
     void signup(json &, std::shared_ptr<SOCK_INFO> &);
     void login(json &, std::shared_ptr<SOCK_INFO> &);
@@ -390,18 +395,18 @@ private:
     void deleteDir(json &, std::shared_ptr<SOCK_INFO> &);
 
 public:
-    Server(int _s_port, const char* _s_ip)
+    Server(int _s_port, const char *_s_ip)
     {
-        readConf();
+        read_conf();
         log = fopen( log_name.c_str(), "a+");
         if(log==nullptr){
-            printf("open log failed!\nlog name %s\n",log_name.c_str());
+            printf("open log failed!\nlog name %s\n", log_name.c_str());
         }
         /* stdio functions are bufferd IO, so need to close buffer */
         if(setvbuf(log, NULL, _IONBF, 0)!=0){
             printf("close fprintf buffer failed!\n");
         }
-        debug_log = fopen("/home/G1752240_new/log/debug.log", "a+");
+        debug_log = fopen(debuglog_name.c_str(), "a+");
         setvbuf(debug_log, NULL, _IONBF, 0);
 
         listen_fd = create_server("0.0.0.0", _s_port, true);
@@ -411,15 +416,6 @@ public:
             perror("[listen failed]");
             exit(EXIT_FAILURE);
         }
-
-        // 创建内核表，设置最大容量 容纳50个fd
-        epoll_fd = epoll_create(MAX_EVENT_NUMBER);
-        if(epoll_fd == -1){
-            exit(-1);
-        }
-
-        // 向内核表中添加fd
-        add_event(epoll_fd, listen_fd, EPOLLIN);
 
 
         // 连接db
@@ -456,24 +452,22 @@ public:
 
         mysql_close(db);
     }
-    void Run();
 };
 
 
-void Server::readConf()
+void Server::read_conf()
 {
-    string conf_file = "/home/G1752240_new/u1752240_new.conf";
-    // std::cout << conf_file << endl;
+    string conf_file = "/home/G1752240/u1752240.conf";
     db_ip = "127.0.0.1";
     db_name = "db1752240";
     db_user = "u1752240";
     db_pwd = "u1752240";
-    // printf("ip %s\nname %s\nuser %s\npwd %s\n", db_ip.c_str(), db_name.c_str(), db_user.c_str(), db_pwd.c_str());
     std::fstream in;
     in.open(conf_file, std::ios::in);
     in >> db_ip >> db_name >> db_user >> db_pwd >> store_path;
     in.close();
     log_name = store_path + "/log/u1752240.log";
+    debuglog_name = store_path + "/log/debug.log";
     realfile_path = store_path + "/realfile/";
     printf("DB: ip %s\nname %s\nuser %s\npwd %s\nstore_path %s\nlog name %s\nreal file path %s\n", db_ip.c_str(), db_name.c_str(), db_user.c_str(), db_pwd.c_str(), store_path.c_str(), log_name.c_str(), realfile_path.c_str());
 }
@@ -518,69 +512,87 @@ void Server::debugger(
 
 
 void Server::close_release(std::shared_ptr<SOCK_INFO> & sinfo){
-    printf("[关闭 ]\n");
+    debug("[关闭 ]");
     close(sinfo->sock);
     struct sockaddr_in client;
     client.sin_addr.s_addr = sinfo->client_ip;
-    // printf("closing... %s:%d, close serv-fd-%d client-fd-%d\n", inet_ntoa(client.sin_addr), sinfo->client_port, sinfo->server_fd, sinfo->sock);
     
-    time_t now = time(0);
-    char *dt = ctime(&now);
     conn("%s:%d disconnect.", inet_ntoa(client.sin_addr), sinfo->client_port);
-    // int res = fprintf(log, "%s%s:%d disconnect. Total bytes from client: %d, total bytes from server: %d.\n", dt, inet_ntoa(client.sin_addr), sinfo.client_port, sinfo.C2S_total, sinfo.S2C_total);
     remove_event(epoll_fd, sinfo->sock);
     sinfos.erase(sinfo->sock);
+    exit(0);
 }
 
 // 需要完成的
 void Server::Run()
 {
-    // showUser();
+    fd_set rfds;
+    while (1)
+    {
+        FD_ZERO(&rfds);
+        FD_SET(listen_fd, &rfds);
+        int res = select(listen_fd + 1, &rfds, NULL, NULL, NULL);
+        if(res > 0){
+            if(FD_ISSET(listen_fd, &rfds)){
+                struct sockaddr_in client;
+                socklen_t addrlen = sizeof(client);
+                int client_fd = accept(listen_fd, (struct sockaddr *)&client, &addrlen);
+
+                int pid = fork();
+                if( pid < 0){
+                    debug("%s:%d, fork failed.", inet_ntoa(client.sin_addr), client.sin_port);
+                    break;
+                }else if(pid == 0){
+                    // 创建内核表，设置最大容量 容纳50个fd
+                    epoll_fd = epoll_create(MAX_EVENT_NUMBER);
+                    if(epoll_fd == -1){
+                        return;
+                    }
+
+                    // 向内核表中添加fd
+                    add_event(epoll_fd, client_fd, EPOLLIN | EPOLLHUP | EPOLLERR );
+                    sinfos[client_fd] = std::make_shared<SOCK_INFO>(client_fd, client.sin_port, client.sin_addr.s_addr);
+
+                    child_loop();
+                    return;
+                }else{
+
+                    conn("%s:%d connect.", inet_ntoa(client.sin_addr), client.sin_port);
+                    close(client_fd);
+                }
+
+            }
+        }
+    }
+}
+
+void Server::child_loop()
+{
     while(1){
         debug("新一轮epoll...");
         printf("[%d %d]\n", epoll_fd, MAX_EVENT_NUMBER);
         int res = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
         debug("新一轮epoll触发...");
-        if (res < 0)
+        if (res <= 0)
         {
             debug("epoll failed, %d", res);
             break;
         }
         debug("epoll succ, %d", res);
-        loop_once(events, res, listen_fd);
+        loop_once(events, res);
         printf("一轮epoll结束\n*******************\n");
     }
 }
 
 
-void Server::loop_once(epoll_event* events, int number, int listen_fd) {
+void Server::loop_once(epoll_event* events, int number) {
     printf("进入循环epoll\n");
 	for(int i = 0; i < number; i++) {
 		int sockfd = events[i].data.fd;
         
-        fprintf(debug_log, "fd, %d\n",sockfd);
+        fprintf(debug_log, "fd, %d\n", sockfd);
         // printf("checking %d, total %d, sock%d listen_fd%d\n",i,number,sockfd,listen_fd);
-		if(sockfd == listen_fd) {
-            struct sockaddr_in client;
-            socklen_t addrlen = sizeof(client);
-            int client_fd = accept(listen_fd, (struct sockaddr *)&client, &addrlen);
-
-            // 将新client添加到内核表中
-            add_event(epoll_fd, client_fd, EPOLLIN | EPOLLHUP | EPOLLERR );
-
-            // SOCK_INFO sinfo(client_fd, client.sin_port, client.sin_addr.s_addr);
-            // sinfos.emplace(client_fd, SOCK_INFO(client_fd, client.sin_port, client.sin_addr.s_addr));
-            // sinfos.insert(std::pair<int, SOCK_INFO>(client_fd, {client_fd, client.sin_port, client.sin_addr.s_addr}));
-            // sinfos.insert(make_pair(client_fd,{ client_fd, client.sin_port, client.sin_addr.s_addr }))
-            // sinfos[client_fd] = SOCK_INFO(client_fd, client.sin_port, client.sin_addr.s_addr);
-            sinfos[client_fd] = std::make_shared<SOCK_INFO>(client_fd, client.sin_port, client.sin_addr.s_addr);
-
-            time_t now = time(0);
-            char *dt = ctime(&now);
-            conn("%s:%d connect.", inet_ntoa(client.sin_addr), client.sin_port);
-            printf("%s%s:%d  %d新建连接.\n", dt, inet_ntoa(client.sin_addr), client.sin_port, client_fd);
-        } 
-        else if(events[i].events & EPOLLIN) {
+		if(events[i].events & EPOLLIN) {
             printf("进入EPOLLIN\n");
             std::shared_ptr<SOCK_INFO> sinfo = sinfos[sockfd];
 
@@ -1617,6 +1629,11 @@ void Server::deleteDir(json& header, std::shared_ptr<SOCK_INFO> & sinfo)
     return;
 }
 
+/* 回收子进程 */
+void handler(int sig) {
+	while(waitpid(-1, NULL, WNOHANG) > 0);
+}
+
 int main(int argc, char** argv)
 {
     char serv_ip_str[30];   /* 指定server的ip */
@@ -1627,6 +1644,7 @@ int main(int argc, char** argv)
     };
     my_handle_option(options, 1, argc, argv);
 
+    signal(SIGCHLD, handler); 
     my_daemon(1, 1);
 
     Server server(serv_port, "0.0.0.0");

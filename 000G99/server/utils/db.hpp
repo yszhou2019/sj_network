@@ -12,20 +12,6 @@ using std::endl;
 
 extern MYSQL* db;
 
-
-// struct DBConf{
-//     string host;     //主机地址
-//     string user;     //用户名
-//     string pwd;      //密码
-//     string database; //数据库
-//     string charset;  //字符集
-//     DBConf():host("47.102.201.228"), user("root"), pwd("root123"), database("netdrive"), charset("gbk") {}
-// };
-
-// class DBConnection{
-
-// };
-
 #define finish_with_error(mysql) _finish_with_error(mysql, __LINE__) 
 
 void _finish_with_error(MYSQL *mysql, int line)

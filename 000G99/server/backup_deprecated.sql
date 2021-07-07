@@ -32,7 +32,7 @@ CREATE TABLE `dir` (
   PRIMARY KEY (`dir_id`),
   KEY `fk_iskf_2` (`dir_uid`),
   CONSTRAINT `fk_iskf_2` FOREIGN KEY (`dir_uid`) REFERENCES `user` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=171 DEFAULT CHARSET=gb2312;
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=gb2312;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -46,13 +46,9 @@ CREATE TABLE `physical_file` (
   `pfile_id` int NOT NULL AUTO_INCREMENT,
   `pfile_md5` varchar(32) CHARACTER SET gb2312 COLLATE gb2312_chinese_ci NOT NULL,
   `pfile_refcnt` int NOT NULL DEFAULT '0',
-  `pfile_chunks` mediumtext CHARACTER SET gb2312 COLLATE gb2312_chinese_ci COMMENT '经过序列化的chunks信息，最多保存1667万字节',
-  `pfile_cnt` int DEFAULT '0',
-  `pfile_total` int DEFAULT NULL,
-  `pfile_complete` tinyint DEFAULT '0',
-  `pfile_name` varchar(100) CHARACTER SET gb2312 COLLATE gb2312_chinese_ci DEFAULT NULL COMMENT '实际文件名',
+  `pfile_name` varchar(100) CHARACTER SET gb2312 COLLATE gb2312_chinese_ci NOT NULL COMMENT '实际文件名',
   PRIMARY KEY (`pfile_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=gb2312;
+) ENGINE=InnoDB DEFAULT CHARSET=gb2312;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -68,7 +64,7 @@ CREATE TABLE `user` (
   `user_pwd` varchar(255) CHARACTER SET gb2312 COLLATE gb2312_chinese_ci NOT NULL,
   `user_bindid` int DEFAULT '0' COMMENT '0代表默认目录',
   PRIMARY KEY (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=78 DEFAULT CHARSET=gb2312;
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=gb2312;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -100,10 +96,14 @@ CREATE TABLE `virtual_file` (
   `vfile_size` bigint NOT NULL COMMENT '虚拟文件的大小（如果是目录则为0）',
   `vfile_md5` varchar(32) CHARACTER SET gb2312 COLLATE gb2312_chinese_ci NOT NULL COMMENT '目录文件md5为空',
   `vfile_mtime` int DEFAULT NULL COMMENT '服务器的最新变动时间',
+  `vfile_chunks` mediumtext CHARACTER SET gb2312 COLLATE gb2312_chinese_ci COMMENT '经过序列化的chunks信息，最多保存1667万字节',
+  `vfile_cnt` int DEFAULT '0',
+  `vfile_total` int DEFAULT NULL,
+  `vfile_complete` tinyint DEFAULT '0',
   PRIMARY KEY (`vfile_id`),
   KEY `fk_iskf_3` (`vfile_dir_id`),
   CONSTRAINT `fk_iskf_3` FOREIGN KEY (`vfile_dir_id`) REFERENCES `dir` (`dir_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=635 DEFAULT CHARSET=gb2312;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=gb2312;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -115,4 +115,4 @@ CREATE TABLE `virtual_file` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2021-07-06  1:21:53
+-- Dump completed on 2021-06-30 16:56:00
