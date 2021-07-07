@@ -423,7 +423,7 @@ public:
             printf("mysql_init failed\n");
         }
 
-        if (mysql_real_connect(db,db_ip.c_str(),db_user.c_str(), db_pwd.c_str(),db_name.c_str(), 0, NULL, 0)==NULL) {
+        if (mysql_real_connect(db, db_ip.c_str(), db_user.c_str(), db_pwd.c_str(),db_name.c_str(), 0, NULL, 0)==NULL) {
             printf("mysql_real_connect failed(%s)\n", mysql_error(db));
         }
 

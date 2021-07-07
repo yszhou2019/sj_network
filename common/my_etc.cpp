@@ -231,6 +231,8 @@ int create_client(const char serv_ip[], int serv_port, int myport, sockaddr_in& 
     if(isNonBlock){
         set_nonblock(sock);
     }
+    int on = 1;
+    setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on) );
     // resources about remote server's addr and port
     bzero(&serv_addr, sizeof(serv_addr)); 
     serv_addr.sin_family = AF_INET; 
