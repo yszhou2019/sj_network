@@ -1,5 +1,5 @@
 - [x] TODO : server运行的时候，epoll长时间没有触发，会导致数据库断开连接
-- [ ]   似乎server还有可能down掉
+- [x]   似乎server还有可能down掉
 - [x]   类型ll的替换 -> size
 - [x]   时间 -> int
 - [x]   API downloadFile
@@ -7,10 +7,10 @@
 - [x]   ~~pfile库~~
 - [x]   type + json + [binary data] 要一块发送（不需要一块发送，如果超时1秒，就放弃读取数据）
 - [x]   该不该阻塞呢？
-- [ ]   守护进程
+- [x]   守护进程
 - [x]   创建数据库
 - [x]   能够编译运行
-- [ ]   rio？
+- [x]   rio？
 
 
 
